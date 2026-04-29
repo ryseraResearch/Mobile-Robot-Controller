@@ -1,0 +1,36 @@
+{
+  "cli": {
+    "version": ">= 18.8.1",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_BACKEND_BASE_URL": "http://192.168.4.100:3001",
+        "EXPO_PUBLIC_ESP32_WS_URL": "ws://192.168.4.1/ws",
+        "EXPO_PUBLIC_DRIVE_INTERVAL_MS": "50"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_BACKEND_BASE_URL": "http://192.168.4.100:3001",
+        "EXPO_PUBLIC_ESP32_WS_URL": "ws://192.168.4.1/ws",
+        "EXPO_PUBLIC_DRIVE_INTERVAL_MS": "50"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_BACKEND_BASE_URL": "http://192.168.4.100:3001",
+        "EXPO_PUBLIC_ESP32_WS_URL": "ws://192.168.4.1/ws",
+        "EXPO_PUBLIC_DRIVE_INTERVAL_MS": "50"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

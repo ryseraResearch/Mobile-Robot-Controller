@@ -146,7 +146,20 @@ If you set the static IP `192.168.4.100` as above, the `.env.production` files a
 - `admin/.env.production` → `VITE_BACKEND_BASE_URL` and `VITE_BACKEND_WS_URL`
 - `mobile/.env.production` → `EXPO_PUBLIC_BACKEND_BASE_URL`
 
-### 6 — Build and install the mobile app
+### 6 — Install the mobile app
+
+**Option A: Download pre-built APK (recommended for race day)**
+
+Download and install the latest APK on your Android device:
+```
+https://expo.dev/accounts/dewminawijekoons-organization/projects/mobile-robot-controller/builds/3ce0b9b9-5b74-455a-9e03-09ad0294efed
+```
+
+1. Open the link on your Android device
+2. Download the APK
+3. Install it (you may need to enable "Install from unknown sources")
+
+**Option B: Build from source**
 
 Requires a physical Android device with USB debugging enabled.
 
@@ -156,7 +169,7 @@ npm install
 npx expo run:android   # builds and installs via expo-dev-client
 ```
 
-For subsequent runs without rebuilding:
+For development with hot reload:
 ```bash
 npx expo start --dev-client
 ```
