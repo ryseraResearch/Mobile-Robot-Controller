@@ -9,7 +9,8 @@
  *   Left  — IN1=26, IN2=27, ENA(PWM)=18
  *   Right — IN3=19, IN4=21, ENB(PWM)=22
  *
- * IR sensors (ADC1, active-high on white line): GPIO 32–36, threshold 2048
+ * IR sensors (DO digital comparator output, active-HIGH on white line):
+ *   GPIO 32, 33, 34, 35, 4 — connect DO pin of each module, tune pot per module
  * Finish wall: HC-SR04 ultrasonic — TRIG=23, ECHO=25
  *   Triggers finish when wall is within FINISH_DISTANCE_CM (default 20 cm)
  */
@@ -39,9 +40,11 @@
 #define PWM_RES_BITS  8   // 0–255
 
 // ─────────────────────── IR sensors ─────────────────────────────
+// All 5 sensors use DO (digital comparator) output — no ADC needed.
+// Active-HIGH: DO = 1 when sensor is over white line.
+// Adjust each module's trimmer pot so LED lights on white, off on black.
 #define SENSOR_COUNT 5
-const uint8_t SENSOR_PINS[SENSOR_COUNT] = {32, 33, 34, 35, 36};
-#define IR_THRESHOLD 2048
+const uint8_t SENSOR_PINS[SENSOR_COUNT] = {32, 33, 34, 35, 4};
 
 // ─────────────────────── Finish wall (HC-SR04 ultrasonic) ───────
 #define ULTRASONIC_TRIG_PIN   23
@@ -119,7 +122,7 @@ void stopMotors() {
 bool readSensors(int out[SENSOR_COUNT]) {
     bool anyOn = false;
     for (int i = 0; i < SENSOR_COUNT; i++) {
-        out[i] = (analogRead(SENSOR_PINS[i]) >= IR_THRESHOLD) ? 1 : 0;
+        out[i] = digitalRead(SENSOR_PINS[i]);
         if (out[i]) anyOn = true;
     }
     return anyOn;
@@ -239,6 +242,9 @@ void setup() {
     ledcAttachPin(RIGHT_PWM_PIN, RIGHT_PWM_CH);
     stopMotors();
 
+    // IR sensor DO pins
+    for (int i = 0; i < SENSOR_COUNT; i++) pinMode(SENSOR_PINS[i], INPUT);
+
     // Finish wall — HC-SR04 ultrasonic
     pinMode(ULTRASONIC_TRIG_PIN, OUTPUT);
     digitalWrite(ULTRASONIC_TRIG_PIN, LOW);
@@ -296,7 +302,7 @@ void loop() {
             lastCalibrateMs = now;
             Serial.print("[CAL] ");
             for (int i = 0; i < SENSOR_COUNT; i++) {
-                Serial.printf("GPIO%d=%4d  ", SENSOR_PINS[i], analogRead(SENSOR_PINS[i]));
+                Serial.printf("GPIO%d=%d  ", SENSOR_PINS[i], digitalRead(SENSOR_PINS[i]));
             }
             Serial.println();
         }

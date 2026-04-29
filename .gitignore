@@ -6,6 +6,8 @@ firmware/.piolibdeps/
 # Node.js
 backend/node_modules/
 backend/.env
+backend/.env.local
+backend/.env.*.local
 
 # SQLite database files
 backend/data/
@@ -16,11 +18,15 @@ mobile/.expo/
 mobile/android/
 mobile/ios/
 mobile/.env
+mobile/.env.local
+mobile/.env.*.local
 
 # Admin dashboard
 admin/node_modules/
 admin/dist/
 admin/.env
+admin/.env.local
+admin/.env.*.local
 
 # OS
 .DS_Store

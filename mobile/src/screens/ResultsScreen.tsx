@@ -6,12 +6,12 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Feather } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { RootStackParamList } from '../types/navigation';
-import { BACKEND_BASE_URL, STORAGE_RACE_RESULT, DEV_MODE, C } from '../constants';
+import { BACKEND_BASE_URL, DEV_MODE, C } from '../constants';
 
 type Nav   = NativeStackNavigationProp<RootStackParamList, 'Results'>;
 type Route = RouteProp<RootStackParamList, 'Results'>;
@@ -24,11 +24,16 @@ function formatTime(ms: number): string {
   return `${m}:${String(s).padStart(2, '0')}.${tenth}`;
 }
 
-function StatRow({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+type FeatherIconName = React.ComponentProps<typeof Feather>['name'];
+
+function StatRow({ icon, label, value }: { icon: FeatherIconName; label: string; value: string }) {
   return (
     <View style={styles.row}>
-      <Text style={styles.rowLabel}>{label}</Text>
-      <Text style={[styles.rowValue, highlight && styles.rowHighlight]}>{value}</Text>
+      <View style={styles.rowLeft}>
+        <Feather name={icon} size={13} color={C.muted} style={{ marginRight: 8 }} />
+        <Text style={styles.rowLabel}>{label}</Text>
+      </View>
+      <Text style={styles.rowValue}>{value}</Text>
     </View>
   );
 }
@@ -53,12 +58,6 @@ export function ResultsScreen() {
   }, []);
 
   async function submitResult() {
-    const stored = await AsyncStorage.getItem(STORAGE_RACE_RESULT);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      if (parsed.posted) { setPosted(true); return; }
-    }
-
     setPosting(true);
     setError('');
     try {
@@ -68,15 +67,9 @@ export function ResultsScreen() {
         body: JSON.stringify({ score, time_ms, time_bonus, eliminated }),
       });
       if (!res.ok) throw new Error('server_error');
-      if (stored) {
-        await AsyncStorage.setItem(
-          STORAGE_RACE_RESULT,
-          JSON.stringify({ ...JSON.parse(stored), posted: true })
-        );
-      }
       setPosted(true);
     } catch {
-      setError('Could not submit result.\nReconnect to home WiFi and tap Retry.');
+      setError('Could not reach backend. Tap Retry.');
     } finally {
       setPosting(false);
     }
@@ -92,37 +85,72 @@ export function ResultsScreen() {
 
       {/* Left â€” identity */}
       <View style={styles.leftPanel}>
-        <Text style={styles.title}>{eliminated ? 'Race Over' : 'Race Complete!'}</Text>
+        <View style={[styles.iconRing, eliminated && styles.iconRingElim]}>
+          <Feather
+            name={eliminated ? 'x-circle' : 'award'}
+            size={56}
+            color={C.primary}
+          />
+        </View>
+        <Text style={styles.statusLabel}>
+          {eliminated ? 'ELIMINATED' : 'RACE COMPLETE'}
+        </Text>
         <Text style={styles.nameText}>{name}</Text>
-        {eliminated && <Text style={styles.eliminatedBadge}>ELIMINATED</Text>}
-        {DEV_MODE && <Text style={styles.devBadge}>DEV MODE â€” not submitted</Text>}
+        {!eliminated && (
+          <View style={styles.tagRow}>
+            <Feather name="check-circle" size={12} color={C.green} style={{ marginRight: 4 }} />
+            <Text style={styles.tagText}>Crossed the finish line</Text>
+          </View>
+        )}
+        {eliminated && (
+          <View style={styles.tagRow}>
+            <Feather name="alert-triangle" size={12} color={C.amber} style={{ marginRight: 4 }} />
+            <Text style={[styles.tagText, { color: C.amber }]}>Left the track for 5 s</Text>
+          </View>
+        )}
+        {DEV_MODE && <Text style={styles.devBadge}>DEV — not submitted</Text>}
       </View>
 
       {/* Right â€” stats + buttons */}
       <View style={styles.rightPanel}>
-        <View style={styles.card}>
-          <StatRow label="Score"      value={String(score)} />
-          {!eliminated && <StatRow label="Time Bonus" value={`+${time_bonus}`} />}
-          <View style={styles.divider} />
-          <StatRow label="Final Score" value={String(finalScore)} highlight />
-          <StatRow label="Time"        value={formatTime(time_ms)} />
+        <View style={styles.heroBlock}>
+          <Text style={styles.heroNumber}>{eliminated ? '0' : String(finalScore)}</Text>
+          <Text style={styles.heroLabel}>FINAL SCORE</Text>
         </View>
 
-        {/* Submission status */}
-        {posting && <ActivityIndicator color={C.primary} size="small" style={{ marginTop: 10 }} />}
+        <View style={styles.card}>
+          <StatRow icon="zap"   label="Race Score" value={String(score)} />
+          {!eliminated && <StatRow icon="star"  label="Time Bonus"  value={`+${time_bonus}`} />}
+          <View style={styles.divider} />
+          <StatRow icon="clock" label="Race Time"  value={formatTime(time_ms)} />
+        </View>
+
+        {posting && (
+          <View style={styles.statusRow}>
+            <ActivityIndicator color={C.primary} size="small" style={{ marginRight: 6 }} />
+            <Text style={styles.statusText}>Saving to leaderboard…</Text>
+          </View>
+        )}
         {posted && !error && !DEV_MODE && (
-          <Text style={styles.postedText}>âœ“ Saved to leaderboard</Text>
+          <View style={styles.statusRow}>
+            <Feather name="check-circle" size={13} color={C.green} style={{ marginRight: 6 }} />
+            <Text style={[styles.statusText, { color: C.green }]}>Saved to leaderboard</Text>
+          </View>
         )}
         {!!error && (
-          <>
-            <Text style={styles.errorText}>{error}</Text>
+          <View style={styles.errorBlock}>
+            <View style={styles.statusRow}>
+              <Feather name="alert-circle" size={13} color={C.red} style={{ marginRight: 6 }} />
+              <Text style={[styles.statusText, { color: C.red }]}>{error}</Text>
+            </View>
             <TouchableOpacity style={styles.retryBtn} onPress={submitResult}>
-              <Text style={styles.retryText}>Retry Submission</Text>
+              <Text style={styles.retryText}>Retry</Text>
             </TouchableOpacity>
-          </>
+          </View>
         )}
 
         <TouchableOpacity style={styles.homeBtn} onPress={goHome}>
+          <Feather name="home" size={15} color={C.bg} style={{ marginRight: 8 }} />
           <Text style={styles.homeBtnText}>Back to Home</Text>
         </TouchableOpacity>
       </View>
@@ -146,44 +174,87 @@ const styles = StyleSheet.create({
     borderRightColor: C.border,
     gap: 8,
   },
-  rightPanel: {
-    flex: 1,
+  iconRing: {
+    width: 108,
+    height: 108,
+    borderRadius: 54,
+    borderWidth: 1.5,
+    borderColor: C.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 32,
-    gap: 12,
+    marginBottom: 8,
+    shadowColor: C.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 20,
+    elevation: 10,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: C.white,
-    textAlign: 'center',
+  iconRingElim: {
+    borderColor: C.red,
+    shadowColor: C.red,
+  },
+  statusLabel: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: C.primary,
+    letterSpacing: 4,
+    marginTop: 2,
   },
   nameText: {
-    fontSize: 18,
-    color: C.primary,
+    fontSize: 22,
+    fontWeight: '700',
+    color: C.white,
     textAlign: 'center',
+    marginTop: 2,
   },
-  eliminatedBadge: {
-    backgroundColor: C.redDim,
-    color: C.red,
+  tagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  tagText: {
+    color: C.mutedLight,
     fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 2,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 4,
-    marginTop: 4,
   },
   devBadge: {
     color: C.amber,
     fontSize: 11,
-    marginTop: 4,
+    marginTop: 6,
+  },
+  rightPanel: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+    gap: 12,
+  },
+  heroBlock: {
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  heroNumber: {
+    fontSize: 64,
+    fontWeight: '900',
+    color: C.primary,
+    lineHeight: 70,
+    letterSpacing: -2,
+    textShadowColor: C.primary,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 16,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  heroLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: C.muted,
+    letterSpacing: 4,
+    marginTop: 2,
   },
   card: {
     backgroundColor: C.card,
     borderRadius: 14,
-    padding: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
     width: '100%',
     maxWidth: 300,
     borderWidth: 1,
@@ -192,62 +263,73 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 6,
+    alignItems: 'center',
+    paddingVertical: 7,
+  },
+  rowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   rowLabel: {
     color: C.mutedLight,
-    fontSize: 15,
+    fontSize: 14,
   },
   rowValue: {
     color: C.white,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '500',
-  },
-  rowHighlight: {
-    color: C.primary,
-    fontSize: 20,
-    fontWeight: 'bold',
   },
   divider: {
     height: 1,
     backgroundColor: C.border,
-    marginVertical: 6,
+    marginVertical: 4,
   },
-  postedText: {
-    color: C.green,
-    fontSize: 13,
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  errorText: {
-    color: C.red,
-    fontSize: 13,
-    textAlign: 'center',
-    lineHeight: 19,
-    maxWidth: 280,
+  statusText: {
+    fontSize: 12,
+    color: C.mutedLight,
+  },
+  errorBlock: {
+    alignItems: 'center',
+    gap: 6,
   },
   retryBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 20,
+    paddingVertical: 6,
+    paddingHorizontal: 18,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: C.primary,
   },
   retryText: {
     color: C.primary,
-    fontSize: 14,
+    fontSize: 13,
+    fontWeight: '600',
   },
   homeBtn: {
     backgroundColor: C.primary,
     borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 32,
-    marginTop: 4,
+    paddingVertical: 11,
+    paddingHorizontal: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     width: '100%',
     maxWidth: 300,
-    alignItems: 'center',
+    marginTop: 2,
+    shadowColor: C.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.45,
+    shadowRadius: 10,
+    elevation: 6,
   },
   homeBtnText: {
     color: C.bg,
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
 });
+

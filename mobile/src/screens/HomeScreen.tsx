@@ -8,15 +8,15 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { RootStackParamList } from '../types/navigation';
-import { BACKEND_BASE_URL, STORAGE_NAME, STORAGE_RACE_ID, DEV_MODE, C } from '../constants';
+import { BACKEND_BASE_URL, DEV_MODE, C } from '../constants';
 
 type Nav   = NativeStackNavigationProp<RootStackParamList, 'Home'>;
-type Phase = 'form' | 'waiting_wifi' | 'countdown';
+type Phase = 'form' | 'ready' | 'countdown';
 
 export function HomeScreen() {
   const navigation = useNavigation<Nav>();
@@ -38,31 +38,19 @@ export function HomeScreen() {
     };
   }, []);
 
-  // â”€â”€ Dev bypass: skip backend + WiFi screen, go straight to Drive â”€
-  function handleDevSkip() {
-    const trimmed = name.trim() || 'Dev Player';
-    raceIdRef.current = -1;
-    nameRef.current   = trimmed;
-    console.log('[HomeScreen] DEV skip â€” going straight to Drive');
-    navigation.replace('Drive', { name: trimmed, raceId: -1 });
-  }
-
   async function handleReady() {
     const trimmed = name.trim();
     if (!trimmed) return;
 
     if (DEV_MODE) {
-      // In dev mode, skip backend and just go to WiFi screen
       raceIdRef.current = Date.now();
       nameRef.current   = trimmed;
-      setPhase('waiting_wifi');
+      setPhase('ready');
       return;
     }
 
-    console.log(`[HomeScreen] Ready pressed â€” name="${trimmed}"`);
     setLoading(true);
     try {
-      console.log(`[HomeScreen] POST ${BACKEND_BASE_URL}/api/race/start`);
       const res = await fetch(`${BACKEND_BASE_URL}/api/race/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -70,23 +58,16 @@ export function HomeScreen() {
       });
       if (!res.ok) throw new Error('server_error');
       const data = await res.json();
-      console.log(`[HomeScreen] Race registered â€” raceId=${data.raceId}`);
 
       raceIdRef.current = data.raceId;
       nameRef.current   = trimmed;
-
-      await AsyncStorage.multiSet([
-        [STORAGE_NAME,    trimmed],
-        [STORAGE_RACE_ID, String(data.raceId)],
-      ]);
-
       connectBackendWs();
-      setPhase('waiting_wifi');
+      setPhase('ready');
     } catch (err) {
       console.warn('[HomeScreen] Backend unreachable:', err);
       Alert.alert(
         'Cannot reach backend',
-        `Check the server is running.\n\nURL: ${BACKEND_BASE_URL}\n\nTip: set DEV_MODE=true in constants.ts to bypass this.`
+        `Check the server is running.\n\nURL: ${BACKEND_BASE_URL}`
       );
     } finally {
       setLoading(false);
@@ -122,7 +103,6 @@ export function HomeScreen() {
   }
 
   function navigateToDrive() {
-    console.log('[HomeScreen] Navigating to DriveScreen');
     wsRef.current?.close();
     navigation.replace('Drive', {
       name:   nameRef.current || name.trim(),
@@ -130,59 +110,58 @@ export function HomeScreen() {
     });
   }
 
-  // â”€â”€ Countdown â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // -- Countdown ------------------------------------------------------------
   if (phase === 'countdown') {
     return (
       <View style={[styles.container, styles.centerFull]}>
-        <Text style={styles.countdownLabel}>Race starting in</Text>
+        <Text style={styles.countdownLabel}>RACE BEGINS IN</Text>
         <Text style={styles.countdownNumber}>{countdown}</Text>
+        <Text style={styles.countdownSub}>GET READY!</Text>
       </View>
     );
   }
 
-  // â”€â”€ WiFi instruction (landscape: two columns) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  if (phase === 'waiting_wifi') {
+  // -- Ready ----------------------------------------------------------------
+  if (phase === 'ready') {
     return (
       <View style={styles.container}>
         <View style={styles.leftPanel}>
-          <Text style={styles.title}>Almost ready!</Text>
+          <View style={styles.iconRing}>
+            <Feather name="check-circle" size={52} color={C.primary} />
+          </View>
+          <Text style={styles.lockedLabel}>LOCKED IN</Text>
+          <Text style={styles.readyName}>{nameRef.current}</Text>
           {DEV_MODE && <Text style={styles.devBadge}>DEV MODE</Text>}
-          <Text style={styles.wifiInstruction}>Connect your phone to:</Text>
-          <Text style={styles.wifiSsid}>LineFollower</Text>
-          <Text style={styles.wifiSub}>Password: race1234</Text>
         </View>
         <View style={styles.rightPanel}>
-          <Text style={styles.wifiNote}>
-            You'll lose internet while on the robot's WiFi.{'\n'}
-            Your result is saved locally and submitted afterwards.
-          </Text>
+          <Feather name="radio" size={22} color={C.primary} style={{ marginBottom: 4 }} />
+          <Text style={styles.readyHint}>Awaiting race start{'\n'}from the admin...</Text>
           <TouchableOpacity style={styles.btnPrimary} onPress={navigateToDrive}>
-            <Text style={styles.btnText}>I'm connected â†’</Text>
+            <Feather name="zap" size={16} color={C.bg} style={{ marginRight: 8 }} />
+            <Text style={styles.btnText}>Jump In Now</Text>
           </TouchableOpacity>
-          {DEV_MODE && (
-            <TouchableOpacity style={styles.btnDev} onPress={handleDevSkip}>
-              <Text style={styles.btnDevText}>Skip WiFi (Dev)</Text>
-            </TouchableOpacity>
-          )}
         </View>
       </View>
     );
   }
 
-  // â”€â”€ Entry form (landscape: two columns) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // -- Entry form -----------------------------------------------------------
   return (
     <View style={styles.container}>
-      {/* Left â€” branding */}
+      {/* Left - branding */}
       <View style={styles.leftPanel}>
-        <Text style={styles.logo}>â¬¡</Text>
-        <Text style={styles.title}>Line Follower</Text>
-        <Text style={styles.subtitle}>School Racing Challenge</Text>
+        <View style={styles.iconRing}>
+          <Feather name="zap" size={52} color={C.primary} />
+        </View>
+        <Text style={styles.title}>ROBORACE</Text>
+        <View style={styles.titleAccent} />
+        <Text style={styles.subtitle}>Mobile Robot Racing</Text>
         {DEV_MODE && <Text style={styles.devBadge}>DEV MODE</Text>}
       </View>
 
-      {/* Right â€” form */}
+      {/* Right - form */}
       <View style={styles.rightPanel}>
-        <Text style={styles.inputLabel}>COMPETITOR NAME</Text>
+        <Text style={styles.inputLabel}>CALLSIGN</Text>
         <TextInput
           style={styles.input}
           placeholder="Enter your name"
@@ -203,13 +182,8 @@ export function HomeScreen() {
             onPress={handleReady}
             disabled={!name.trim()}
           >
-            <Text style={styles.btnText}>Ready to Race</Text>
-          </TouchableOpacity>
-        )}
-
-        {DEV_MODE && (
-          <TouchableOpacity style={styles.btnDev} onPress={handleDevSkip}>
-            <Text style={styles.btnDevText}>âš¡ Skip to Drive (Dev)</Text>
+            <Feather name="flag" size={16} color={!name.trim() ? C.muted : C.bg} style={{ marginRight: 8 }} />
+            <Text style={[styles.btnText, !name.trim() && styles.btnTextDisabled]}>Join the Race</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -234,6 +208,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     borderRightWidth: 1,
     borderRightColor: C.border,
+    gap: 8,
   },
   rightPanel: {
     flex: 1,
@@ -242,22 +217,49 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     gap: 12,
   },
-  logo: {
-    fontSize: 48,
+  iconRing: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    borderWidth: 1.5,
+    borderColor: C.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 8,
-    color: C.primary,
+    shadowColor: C.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 8,
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
+    fontSize: 30,
+    fontWeight: '900',
     color: C.white,
+    letterSpacing: 6,
     textAlign: 'center',
+    textShadowColor: C.primary,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
+  },
+  titleAccent: {
+    width: 48,
+    height: 2,
+    backgroundColor: C.primary,
+    borderRadius: 1,
+    marginTop: 2,
+    shadowColor: C.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 13,
     color: C.mutedLight,
     marginTop: 4,
+    letterSpacing: 2,
     textAlign: 'center',
+    textTransform: 'uppercase',
   },
   devBadge: {
     marginTop: 10,
@@ -271,12 +273,13 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   inputLabel: {
-    color: C.muted,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 2,
+    color: C.primary,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 3,
     alignSelf: 'flex-start',
     marginLeft: 4,
+    marginBottom: -4,
   },
   input: {
     width: '100%',
@@ -294,66 +297,74 @@ const styles = StyleSheet.create({
     backgroundColor: C.primary,
     borderRadius: 10,
     paddingVertical: 12,
-    paddingHorizontal: 32,
+    paddingHorizontal: 28,
     width: '100%',
     maxWidth: 300,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: C.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 6,
   },
   btnDisabled: {
     backgroundColor: C.surface,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   btnText: {
     color: C.bg,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  btnDev: {
-    borderWidth: 1,
-    borderColor: C.amber,
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 24,
-    width: '100%',
-    maxWidth: 300,
-    alignItems: 'center',
-  },
-  btnDevText: {
-    color: C.amber,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  wifiInstruction: {
     fontSize: 15,
-    color: C.mutedLight,
-    marginBottom: 4,
-    textAlign: 'center',
+    fontWeight: '800',
+    letterSpacing: 1,
   },
-  wifiSsid: {
-    fontSize: 26,
-    fontWeight: 'bold',
+  btnTextDisabled: {
+    color: C.muted,
+  },
+  readyName: {
+    fontSize: 22,
+    color: C.white,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  lockedLabel: {
+    fontSize: 11,
     color: C.primary,
-    marginBottom: 2,
+    fontWeight: '800',
+    letterSpacing: 4,
+    marginTop: 4,
   },
-  wifiSub: {
+  readyHint: {
     fontSize: 14,
-    color: C.muted,
-  },
-  wifiNote: {
-    fontSize: 13,
-    color: C.muted,
+    color: C.mutedLight,
     textAlign: 'center',
-    lineHeight: 20,
     maxWidth: 280,
+    lineHeight: 22,
+    marginBottom: 8,
   },
   countdownLabel: {
-    fontSize: 18,
-    color: C.mutedLight,
-    marginBottom: 12,
+    fontSize: 13,
+    color: C.primary,
+    fontWeight: '800',
+    letterSpacing: 4,
+    marginBottom: 8,
   },
   countdownNumber: {
-    fontSize: 110,
-    fontWeight: 'bold',
+    fontSize: 120,
+    fontWeight: '900',
     color: C.primary,
-    lineHeight: 120,
+    lineHeight: 130,
+    textShadowColor: C.primary,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 24,
+  },
+  countdownSub: {
+    fontSize: 14,
+    color: C.mutedLight,
+    letterSpacing: 6,
+    marginTop: 8,
   },
 });
