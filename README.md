@@ -1,10 +1,66 @@
-# RoboRace — Mobile Robot Racing Challenge
+# 🤖 RoboRace — Mobile Robot Racing Challenge
 
-A high-energy competitive event where players pilot a differential-drive ESP32 robot along a white line track using a mobile joystick app. Points deduct in real time whenever the robot strays off course. An admin dashboard manages race configuration, countdowns, and the live leaderboard — suitable for all ages, from first-timers to seasoned hobbyists.
+<div align="center">
+
+![ESP32](https://img.shields.io/badge/ESP32-Arduino-00979D?style=for-the-badge&logo=espressif)
+![React Native](https://img.shields.io/badge/React_Native-Expo-61DAFB?style=for-the-badge&logo=react)
+![Node.js](https://img.shields.io/badge/Backend-Node.js-339933?style=for-the-badge&logo=node.js)
+![React](https://img.shields.io/badge/Admin-React-61DAFB?style=for-the-badge&logo=react)
+
+**A high-energy competitive robot racing game with real-time scoring, mobile joystick control, and live leaderboards.**
+
+[Download APK](https://expo.dev/accounts/dewminawijekoons-organization/projects/mobile-robot-controller/builds/3ce0b9b9-5b74-455a-9e03-09ad0294efed) • [Hardware Setup](#-hardware-wiring) • [Quick Start](#-quick-start)
+
+</div>
 
 ---
 
-## Repository structure
+## 📱 Mobile App
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="docs/images/photo_1_2026-04-30_05-20-09.jpg" alt="Home Screen" width="180"/><br/>
+      <sub><b>Start Screen</b></sub>
+    </td>
+    <td align="center">
+      <img src="docs/images/photo_2_2026-04-30_05-20-09.jpg" alt="Drive Screen" width="180"/><br/>
+      <sub><b>Admin Approval</b></sub>
+    </td>
+    <td align="center">
+      <img src="docs/images/photo_3_2026-04-30_05-20-09.jpg" alt="Sensor Display" width="180"/><br/>
+      <sub><b>Countdown</b></sub>
+    </td>
+    <td align="center">
+      <img src="docs/images/photo_4_2026-04-30_05-20-09.jpg" alt="Race Progress" width="180"/><br/>
+      <sub><b>Racing and Live Score</b></sub>
+    </td>
+    <td align="center">
+      <img src="docs/images/photo_5_2026-04-30_05-20-09.jpg" alt="Results Screen" width="180"/><br/>
+      <sub><b>Results</b></sub>
+    </td>
+  </tr>
+</table>
+
+**Download APK:** [Latest Release](https://expo.dev/accounts/dewminawijekoons-organization/projects/mobile-robot-controller/builds/3ce0b9b9-5b74-455a-9e03-09ad0294efed)
+
+---
+
+## 📋 Table of Contents
+
+- [Repository Structure](#-repository-structure)
+- [Game Rules](#-game-rules)
+- [Network Architecture](#-network-architecture)
+- [Hardware Wiring](#-hardware-wiring)
+- [Quick Start](#-quick-start)
+- [Race Day Setup](#-race-day-setup)
+- [Admin Dashboard](#-admin-dashboard)
+- [Configuration](#-configuration)
+- [Testing](#-testing)
+
+---
+
+## 📁 Repository Structure
 
 ```
 /firmware   — ESP32 C++ (PlatformIO + Arduino)
@@ -15,23 +71,46 @@ A high-energy competitive event where players pilot a differential-drive ESP32 r
 
 ---
 
-## Network architecture
+## 🎮 Game Rules
 
-All devices connect to the **ESP32's own WiFi access point** — no home WiFi needed during a race.
-
-```
-ESP32 AP  SSID: LineFollower  PASS: race1234  IP: 192.168.4.1
-    ├── Phone     192.168.4.x   ← drives robot via WebSocket
-    └── PC        192.168.4.x   ← runs backend + admin dashboard
-```
-
-> The PC must have a **static IP** on the `LineFollower` network so the mobile app can always reach the backend at a known address. See [Admin PC static IP](#admin-pc-static-ip-required-on-race-day) below.
+| Rule | Value |
+|------|-------|
+| **Initial Score** | 1000 points (configurable) |
+| **Penalty** | −1 point per 100ms off line |
+| **Elimination** | After 5 seconds cumulative off-line |
+| **Time Bonus** | `max(0, 500 − floor(seconds) × 10)` |
+| **Safety Kill** | Motors stop after 5s without commands |
 
 ---
 
-## Hardware wiring
+## 🌐 Network Architecture
 
-### Motor driver (L298N)
+All devices connect to the **ESP32's WiFi Access Point** — no external WiFi needed.
+
+```
+┌─────────────────────────────────────────────────┐
+│         ESP32 Access Point                      │
+│   SSID: LineFollower    PASS: race1234          │
+│            IP: 192.168.4.1                      │
+└────────────┬────────────────────────┬───────────┘
+             │                        │
+    ┌────────▼────────┐      ┌────────▼────────┐
+    │  Admin PC       │      │  Player Phones  │
+    │  192.168.4.100  │      │  192.168.4.x    │
+    ├─────────────────┤      ├─────────────────┤
+    │ • Backend       │      │ • Mobile App    │
+    │ • Dashboard     │      │ • WebSocket to  │
+    │ • WebSocket     │      │   ESP32         │
+    └─────────────────┘      └─────────────────┘
+```
+
+> ⚠️ **Important:** The admin PC needs a [static IP](#-race-day-setup) (`192.168.4.100`) so players can reach the backend consistently.
+
+---
+
+## ⚡ Hardware Wiring
+
+### Motor Driver (L298N)
 
 | Signal       | ESP32 GPIO |
 |--------------|-----------|
@@ -44,7 +123,7 @@ ESP32 AP  SSID: LineFollower  PASS: race1234  IP: 192.168.4.1
 
 > GPIO 16 & 17 are reserved for PSRAM on ESP32-WROOM — do not use for motors.
 
-### IR sensors (×5) — digital DO output
+### IR Sensors (×5) — Digital DO Output
 
 Connect each module's **DO pin** (not AO) to the ESP32. Use each module's blue trimmer pot to set the threshold: LED on = white line (DO = HIGH).
 
@@ -56,7 +135,7 @@ Connect each module's **DO pin** (not AO) to the ESP32. Use each module's blue t
 | 4      | 35   |
 | 5      | 4    |
 
-### Finish wall (HC-SR04 ultrasonic)
+### Finish Wall (HC-SR04 Ultrasonic)
 
 | Signal | GPIO |
 |--------|------|
@@ -67,19 +146,9 @@ The finish triggers when the robot is within **10 cm** of the wall (`FINISH_DIST
 
 ---
 
-## Game rules
+## 🚀 Quick Start
 
-- Initial score: **1000** (configurable)
-- **−1 point** per 100 ms spent off the white line
-- **Eliminated** after 5 s of cumulative off-line time
-- **Time bonus** = `max(0, 500 − floor(elapsed_seconds) × 10)` added on finish
-- Safety kill: motors stop if no drive command is received for **5 s** during a race
-
----
-
-## Setup & startup sequence
-
-### 1 — Flash the ESP32
+### 1️⃣ Flash the ESP32
 
 ```bash
 cd firmware
@@ -89,25 +158,9 @@ pio device monitor   # 115200 baud — confirm "AP ready" message
 
 Requires [PlatformIO](https://platformio.org/) (VS Code extension or CLI).
 
-### 2 — Set a static IP on the PC (race day only)
+### 2️⃣ Start the Backend Server
 
-The ESP32's DHCP server assigns a different IP to your PC each time you connect. A static IP prevents the mobile app's backend URL from becoming stale.
 
-**Set static IP** (PowerShell as Admin, run before or after connecting to `LineFollower`):
-
-```powershell
-netsh interface ip set address name="WiFi" static 192.168.4.100 255.255.255.0 192.168.4.1
-```
-
-**Restore DHCP** (run when leaving the event and switching back to normal WiFi):
-
-```powershell
-netsh interface ip set address name="WiFi" dhcp
-```
-
-`192.168.4.100` is already set in `mobile/.env.production` and `mobile/.env.development` — no manual IP hunting needed.
-
-### 3 — Start the backend (on the PC)
 
 ```bash
 cd backend
@@ -120,9 +173,9 @@ npm run dev
 npm run start
 ```
 
-The server starts on `http://0.0.0.0:3001`. Make sure the PC is connected to `LineFollower` WiFi and the static IP is set before players join.
+The server starts on `http://0.0.0.0:3001`.
 
-### 4 — Open the admin dashboard
+### 3️⃣ Open the Admin Dashboard
 
 ```bash
 cd admin
@@ -139,14 +192,7 @@ npm run preview   # serves the production build locally
 
 Open `http://localhost:5173` (dev) or `http://localhost:4173` (preview).
 
-### 5 — Configure environment for race day
-
-If you set the static IP `192.168.4.100` as above, the `.env.production` files are already correct and need no changes. If you use a different address, update it in both files:
-
-- `admin/.env.production` → `VITE_BACKEND_BASE_URL` and `VITE_BACKEND_WS_URL`
-- `mobile/.env.production` → `EXPO_PUBLIC_BACKEND_BASE_URL`
-
-### 6 — Install the mobile app
+### 4️⃣ Install the Mobile App
 
 **Option A: Download pre-built APK (recommended for race day)**
 
@@ -178,7 +224,25 @@ Then open the Expo Dev Client app on the phone and connect.
 
 ---
 
-## Race day flow
+## 🏁 Race Day Setup
+
+### Set Static IP on Admin PC
+
+The ESP32's DHCP server assigns different IPs. Set a static IP so the mobile app can reach the backend reliably.
+
+**PowerShell (as Admin):**
+```powershell
+netsh interface ip set address name="WiFi" static 192.168.4.100 255.255.255.0 192.168.4.1
+```
+
+**Restore DHCP later:**
+```powershell
+netsh interface ip set address name="WiFi" dhcp
+```
+
+> `192.168.4.100` is pre-configured in `.env.production` files.
+
+### Race Day Flow
 
 1. Admin connects PC to `LineFollower` WiFi, starts backend (`npm run start`)
 2. Admin opens dashboard (`http://localhost:5173` or the preview URL)
@@ -201,23 +265,7 @@ Then open the Expo Dev Client app on the phone and connect.
 
 ---
 
-## Mobile app screenshots
-
-<p align="center">
-  <img src="docs/images/photo_1_2026-04-30_05-20-09.jpg" alt="Home Screen" width="200"/>
-  <img src="docs/images/photo_2_2026-04-30_05-20-09.jpg" alt="Drive Screen" width="200"/>
-  <img src="docs/images/photo_3_2026-04-30_05-20-09.jpg" alt="Sensor Display" width="200"/>
-  <img src="docs/images/photo_4_2026-04-30_05-20-09.jpg" alt="Race Progress" width="200"/>
-  <img src="docs/images/photo_5_2026-04-30_05-20-09.jpg" alt="Results Screen" width="200"/>
-</p>
-
-**Home Screen** — Player enters name and connects to race  
-**Drive Screen** — Dual joystick control with live score  
-**Results Screen** — Final score with time bonus breakdown
-
----
-
-## Admin dashboard
+## 🎛️ Admin Dashboard
 
 | Tab | Purpose |
 |-----|---------|
@@ -235,7 +283,7 @@ The PC must be connected to the `LineFollower` AP when doing this (it usually al
 
 ---
 
-## Sensor calibration
+## 🔧 Sensor Calibration
 
 While the ESP32 is running, open a browser and visit:
 ```
@@ -245,22 +293,30 @@ The Serial monitor will print all 5 sensor DO values (0 or 1) every 200 ms for 1
 
 ---
 
-## Environment files
+## ⚙️ Configuration
 
-| File | Used by | When |
-|------|---------|------|
-| `backend/.env.development`  | `npm run dev`   | Local testing |
-| `backend/.env.production`   | `npm run start` | Race day |
-| `admin/.env.development`    | `npm run dev`   | Local testing |
-| `admin/.env.production`     | `npm run build` | Race day |
-| `mobile/.env.development`   | `npx expo start`       | Local testing (DEV_MODE=true) |
-| `mobile/.env.production`    | `npx expo run:android` | Race day build (DEV_MODE=false) |
+### Environment Files
 
-`.env.local` and `.env.*.local` files are gitignored — use them for machine-specific overrides without affecting the committed defaults.
+| Component | Development | Production |
+|-----------|-------------|------------|
+| **Backend** | `.env.development` | `.env.production` |
+| **Admin** | `.env.development` | `.env.production` |
+| **Mobile** | `.env.development` | `.env.production` |
+
+**Default backend URL:** `192.168.4.100:3001`
+
+> 💡 **Tip:** Use `.env.local` or `.env.*.local` for machine-specific overrides (gitignored).
+
+### Changing Network Configuration
+
+If you need a different static IP than `192.168.4.100`, update:
+
+- `admin/.env.production` → `VITE_BACKEND_BASE_URL` and `VITE_BACKEND_WS_URL`
+- `mobile/.env.production` → `EXPO_PUBLIC_BACKEND_BASE_URL`
 
 ---
 
-## End-to-end test checklist
+## ✅ Testing
 
 - [ ] Full race: player drives to finish wall, time bonus awarded, leaderboard updates
 - [ ] Elimination: robot off-line for 5 s, app shows elimination screen, result saved
