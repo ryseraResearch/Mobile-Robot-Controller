@@ -6,11 +6,12 @@
  * Calibration: GET http://192.168.4.1/calibrate  (streams raw ADC to Serial, 10 s)
  *
  * Motor wiring (L298N):
- *   Left  — IN1=16, IN2=17, ENA(PWM)=18
+ *   Left  — IN1=26, IN2=27, ENA(PWM)=18
  *   Right — IN3=19, IN4=21, ENB(PWM)=22
- *a
+ *
  * IR sensors (ADC1, active-high on white line): GPIO 32–36, threshold 2048
- * Finish wall: GPIO 23, active LOW (INPUT_PULLUP)
+ * Finish wall: HC-SR04 ultrasonic — TRIG=23, ECHO=25
+ *   Triggers finish when wall is within FINISH_DISTANCE_CM (default 20 cm)
  */
 
 #include <Arduino.h>
@@ -24,8 +25,9 @@
 #define AP_PASS  "race1234"
 
 // ─────────────────────── Motor pins (L298N) ──────────────────────
-#define LEFT_IN1      16
-#define LEFT_IN2      17
+// NOTE: GPIO 16 & 17 are reserved for PSRAM on ESP32-WROOM modules.
+#define LEFT_IN1      26
+#define LEFT_IN2      27
 #define LEFT_PWM_PIN  18
 #define RIGHT_IN1     19
 #define RIGHT_IN2     21
@@ -41,8 +43,11 @@
 const uint8_t SENSOR_PINS[SENSOR_COUNT] = {32, 33, 34, 35, 36};
 #define IR_THRESHOLD 2048
 
-// ─────────────────────── Finish wall ────────────────────────────
-#define FINISH_PIN 23
+// ─────────────────────── Finish wall (HC-SR04 ultrasonic) ───────
+#define ULTRASONIC_TRIG_PIN   23
+#define ULTRASONIC_ECHO_PIN   25
+#define FINISH_DISTANCE_CM    10    // trigger finish when wall ≤ this distance
+#define ULTRASONIC_TIMEOUT_US 30000UL  // ~5 m max range; avoids blocking too long
 
 // ─────────────────────── Timing constants ────────────────────────
 #define STATE_BROADCAST_MS   100UL  // send state every 100 ms
@@ -186,7 +191,7 @@ void onWsEvent(AsyncWebSocket *srv, AsyncWebSocketClient *client,
         if (strcmp(action, "start") == 0 && gameState == WAITING) {
             gameState             = RACING;
             raceStartMs           = millis();
-            lastLoopMs            = millis();
+            lastLoopMs            = raceStartMs;
             offlineAccumMs        = 0;
             offlineDeductIntervals = 0;
             currentScore          = initialScore;
@@ -234,8 +239,10 @@ void setup() {
     ledcAttachPin(RIGHT_PWM_PIN, RIGHT_PWM_CH);
     stopMotors();
 
-    // Finish wall — active LOW
-    pinMode(FINISH_PIN, INPUT_PULLUP);
+    // Finish wall — HC-SR04 ultrasonic
+    pinMode(ULTRASONIC_TRIG_PIN, OUTPUT);
+    digitalWrite(ULTRASONIC_TRIG_PIN, LOW);
+    pinMode(ULTRASONIC_ECHO_PIN, INPUT);
 
     // WiFi Access Point
     WiFi.mode(WIFI_AP);
@@ -254,11 +261,11 @@ void setup() {
 
     // /calibrate — prints raw ADC values to Serial for 10 s
     httpServer.on("/calibrate", HTTP_GET, [](AsyncWebServerRequest *req) {
-        if (!calibrating) {
-            calibrating      = true;
-            calibrateStartMs = millis();
-            lastCalibrateMs  = millis() - CALIBRATE_INTERVAL_MS;
-        }
+        // Always restart calibration on each request
+        calibrating      = true;
+        calibrateStartMs = millis();
+        lastCalibrateMs  = millis() - CALIBRATE_INTERVAL_MS;
+        Serial.println("[CAL] Calibration started.");
         req->send(200, "text/plain",
                   "Calibration started (10 s). Open Serial monitor for raw ADC readings.\n");
     });
@@ -333,8 +340,18 @@ void loop() {
         }
     }
 
-    // ── Finish wall trigger (active LOW) ─────────────────────────
-    if (!finishTriggered && digitalRead(FINISH_PIN) == LOW) {
+    // ── Finish wall trigger (HC-SR04) ────────────────────────────
+    // Fire a 10 µs trigger pulse
+    digitalWrite(ULTRASONIC_TRIG_PIN, LOW);
+    delayMicroseconds(2);
+    digitalWrite(ULTRASONIC_TRIG_PIN, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(ULTRASONIC_TRIG_PIN, LOW);
+    // Measure echo pulse width; convert to cm (speed of sound: 29.1 µs/cm one-way)
+    unsigned long echoUs = pulseIn(ULTRASONIC_ECHO_PIN, HIGH, ULTRASONIC_TIMEOUT_US);
+    float distanceCm = (echoUs == 0) ? 999.0f : (echoUs / 2.0f / 29.1f);
+
+    if (!finishTriggered && distanceCm > 0 && distanceCm <= FINISH_DISTANCE_CM) {
         finishTriggered = true;
         stopMotors();
         gameState      = FINISHED;
