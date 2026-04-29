@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- 
+    Network Security Configuration for Line Follower Robot Game
+    Allows cleartext (HTTP/WS) traffic to local network IPs
+    Required for ESP32 AP (192.168.4.x) and local backend communication
+    -->
+    
+    <!-- Base configuration: Allow cleartext for all domains -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    
+    <!-- Explicitly allow cleartext for ESP32 AP network -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">192.168.4.1</domain>
+        <domain includeSubdomains="true">192.168.4.100</domain>
+    </domain-config>
+    
+    <!-- Allow localhost/loopback for development -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <domain includeSubdomains="true">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>
