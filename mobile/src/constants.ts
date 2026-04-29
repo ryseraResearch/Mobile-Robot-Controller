@@ -2,7 +2,7 @@
 // Set in .env.development / .env.production via EXPO_PUBLIC_BACKEND_BASE_URL.
 // Update the production value to the PC's 192.168.4.x IP (run ipconfig after
 // connecting to the 'LineFollower' AP).
-export const BACKEND_BASE_URL  = process.env.EXPO_PUBLIC_BACKEND_BASE_URL  ?? 'http://192.168.4.2:3001';
+export const BACKEND_BASE_URL  = process.env.EXPO_PUBLIC_BACKEND_BASE_URL  ?? 'http://192.168.4.4:3001';
 
 // ── ESP32 Access Point ────────────────────────────────────────────
 export const ESP32_WS_URL      = process.env.EXPO_PUBLIC_ESP32_WS_URL      ?? 'ws://192.168.4.1/ws';
@@ -12,11 +12,6 @@ export const DRIVE_INTERVAL_MS = Number(process.env.EXPO_PUBLIC_DRIVE_INTERVAL_M
 
 // ── AsyncStorage keys ────────────────────────────────────────────
 export const STORAGE_NAME = 'competitorName'; // reserved for future use
-
-// ── Dev mode ─────────────────────────────────────────────────────
-// Controlled by EXPO_PUBLIC_DEV_MODE in .env.development / .env.production.
-// true = bypass backend + ESP32, logs only.
-export const DEV_MODE = process.env.EXPO_PUBLIC_DEV_MODE === 'true';
 
 // ── Color theme ──────────────────────────────────────────────────
 export const C = {

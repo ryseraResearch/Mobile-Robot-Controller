@@ -1,17 +1,26 @@
 import { useState, useRef, useEffect } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 import { BACKEND_WS_URL, ESP32_WS_URL } from '../constants';
 
-export function RaceControlTab() {
-  const [countdown, setCountdown]         = useState<number | null>(null);
-  const [backendWs, setBackendWs]         = useState<WebSocket | null>(null);
-  const [bwsStatus, setBwsStatus]         = useState<'connecting' | 'connected' | 'error'>('connecting');
-  const [stopStatus, setStopStatus]       = useState<'idle' | 'sending' | 'ok' | 'error'>('idle');
-  const [currentRacer, setCurrentRacer]   = useState<string | null>(null);
-  const bwsRef                            = useRef<WebSocket | null>(null);
+interface Props {
+  pendingRacer:  string | null;
+  onRacerUpdate: Dispatch<SetStateAction<string | null>>;
+}
+
+export function RaceControlTab({ pendingRacer, onRacerUpdate }: Props) {
+  const [countdown,  setCountdown]  = useState<number | null>(null);
+  const [backendWs,  setBackendWs]  = useState<WebSocket | null>(null);
+  const [bwsStatus,  setBwsStatus]  = useState<'connecting' | 'connected' | 'error'>('connecting');
+  const [stopStatus, setStopStatus] = useState<'idle' | 'sending' | 'ok' | 'error'>('idle');
+  const bwsRef = useRef<WebSocket | null>(null);
+  const ivRef  = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     connectBackend();
-    return () => { bwsRef.current?.close(); };
+    return () => {
+      bwsRef.current?.close();
+      ivRef.current && clearInterval(ivRef.current);
+    };
   }, []);
 
   function connectBackend() {
@@ -24,7 +33,7 @@ export function RaceControlTab() {
     ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data as string);
-        if (msg.type === 'race_start' && msg.name) setCurrentRacer(msg.name as string);
+        if (msg.type === 'race_start' && msg.name) onRacerUpdate(msg.name as string);
       } catch {}
     };
   }
@@ -34,10 +43,14 @@ export function RaceControlTab() {
     backendWs.send(JSON.stringify({ type: 'countdown', seconds }));
     setCountdown(seconds);
     let remaining = seconds;
-    const iv = setInterval(() => {
+    ivRef.current = setInterval(() => {
       remaining--;
       setCountdown(remaining);
-      if (remaining <= 0) { clearInterval(iv); setCountdown(null); }
+      if (remaining <= 0) {
+        ivRef.current && clearInterval(ivRef.current);
+        setCountdown(null);
+        onRacerUpdate(null);
+      }
     }, 1000);
   }
 
@@ -47,7 +60,7 @@ export function RaceControlTab() {
     try {
       ws = new WebSocket(ESP32_WS_URL);
       await new Promise<void>((res, rej) => {
-        ws!.onopen = () => res();
+        ws!.onopen  = () => res();
         ws!.onerror = () => rej();
         setTimeout(() => rej(), 5000);
       });
@@ -63,64 +76,82 @@ export function RaceControlTab() {
   }
 
   return (
-    <div className="max-w-lg mx-auto py-8 px-4 space-y-8">
-      <h2 className="text-xl font-semibold text-[#eeeeff]">Race Control</h2>
+    <div className="max-w-lg mx-auto py-8 px-4 space-y-6">
 
-      {/* Current racer */}
-      <div className="rounded-lg bg-[#0e0e1e] border border-[#1e1e3c] px-5 py-4 space-y-1">
-        <p className="text-xs text-[#4a4a80] uppercase tracking-wider">Current Competitor</p>
-        <p className="text-lg font-bold text-[#00c8ff]">{currentRacer ?? '—'}</p>
-        <p className="text-xs text-[#4a4a80]">Updates when mobile app starts a race</p>
-      </div>
-
-      {/* Backend WS status */}
+      {/* Backend connection */}
       <div className="flex items-center gap-2">
-        <span className="text-xs text-[#4a4a80]">Backend WS:</span>
-        <span className={`text-xs px-2 py-0.5 rounded-full border ${
-          bwsStatus === 'connected' ? 'border-[#00e676] text-[#00e676]' : 'border-[#ff3366] text-[#ff3366]'
-        }`}>
-          {bwsStatus === 'connected' ? '● Connected' : '○ Disconnected'}
+        <span className={`w-2 h-2 rounded-full ${bwsStatus === 'connected' ? 'bg-[#00E676]' : 'bg-[#FF1744] animate-pulse'}`} />
+        <span className="text-xs text-[#9A7070]">
+          {bwsStatus === 'connected' ? 'Backend connected' : bwsStatus === 'connecting' ? 'Connecting to backend…' : 'Backend offline — retrying'}
         </span>
       </div>
 
-      {/* Countdown */}
-      <div className="space-y-3">
-        <p className="text-sm text-[#8888bb] font-medium">Start Countdown</p>
-        <p className="text-xs text-[#4a4a80]">Broadcasts countdown to mobile app via backend WebSocket. Mobile will show overlay then auto-send start to ESP32.</p>
-
-        {countdown !== null ? (
-          <div className="text-center py-6">
-            <span className="text-7xl font-black text-[#ffaa00]">{countdown === 0 ? 'GO!' : countdown}</span>
+      {/* Race request card */}
+      {countdown !== null ? (
+        /* ── Active countdown ── */
+        <div className="rounded-xl border border-[#2E1A1A] bg-[#1C1010] px-6 py-10 text-center space-y-2">
+          <p className="text-xs text-[#9A7070] uppercase tracking-widest">Race starting in</p>
+          <p className="text-[96px] font-black leading-none text-[#FF1744]" style={{ textShadow: '0 0 32px #FF174466' }}>
+            {countdown === 0 ? 'GO!' : countdown}
+          </p>
+          {pendingRacer && (
+            <p className="text-sm text-[#9A7070]">Good luck, <span className="text-[#F0ECEC] font-semibold">{pendingRacer}</span>!</p>
+          )}
+        </div>
+      ) : pendingRacer ? (
+        /* ── Competitor waiting ── */
+        <div className="rounded-xl border border-[#FF1744]/40 bg-[#1C1010] px-6 py-6 space-y-5"
+             style={{ boxShadow: '0 0 24px #FF174422' }}>
+          <div className="space-y-1">
+            <p className="text-xs text-[#FF9100] uppercase tracking-widest font-bold">Race Request</p>
+            <p className="text-2xl font-black text-[#F0ECEC]">{pendingRacer}</p>
+            <p className="text-sm text-[#9A7070]">is ready to race — start the countdown when you're set.</p>
           </div>
-        ) : (
-          <div className="flex gap-3">
-            {[3, 5, 10].map(s => (
-              <button
-                key={s}
-                onClick={() => sendCountdown(s)}
-                disabled={bwsStatus !== 'connected'}
-                className="flex-1 py-3 rounded bg-[#13132a] border border-[#1e1e3c] text-[#eeeeff] font-semibold hover:border-[#00c8ff] hover:text-[#00c8ff] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {s}s
-              </button>
+          <div className="space-y-2">
+            <p className="text-xs text-[#5A3A3A] uppercase tracking-wider">Countdown duration</p>
+            <div className="flex gap-3">
+              {[3, 5, 10].map(s => (
+                <button
+                  key={s}
+                  onClick={() => sendCountdown(s)}
+                  disabled={bwsStatus !== 'connected'}
+                  className="flex-1 py-3 rounded-lg bg-[#FF1744] text-white font-bold text-lg hover:bg-[#ff4060] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {s}s
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* ── Waiting for competitor ── */
+        <div className="rounded-xl border border-[#2E1A1A] bg-[#1C1010] px-6 py-8 text-center space-y-2">
+          <p className="text-[#F0ECEC] font-semibold">Waiting for a competitor</p>
+          <p className="text-sm text-[#9A7070]">Ask the competitor to open the app and enter their name. Their request will appear here.</p>
+          <div className="flex justify-center gap-1 pt-2">
+            {[0, 1, 2].map(i => (
+              <span key={i} className="w-1.5 h-1.5 rounded-full bg-[#5A3A3A] animate-pulse"
+                    style={{ animationDelay: `${i * 200}ms` }} />
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Emergency stop */}
-      <div className="space-y-3">
-        <p className="text-sm text-[#8888bb] font-medium">Emergency Stop</p>
-        <p className="text-xs text-[#4a4a80]">Sends stop command directly to ESP32. Requires laptop to be on <strong className="text-[#8888bb]">LineFollower</strong> WiFi.</p>
+      <div className="space-y-2 pt-2">
+        <p className="text-xs text-[#5A3A3A] uppercase tracking-wider">Emergency</p>
+        <p className="text-xs text-[#5A3A3A]">
+          Sends a stop command directly to the robot. Requires this laptop to be on the <strong className="text-[#9A7070]">LineFollower</strong> WiFi.
+        </p>
         <button
           onClick={emergencyStop}
           disabled={stopStatus === 'sending'}
-          className="w-full py-3 rounded bg-[#3a0018] border border-[#ff3366]/50 text-[#ff3366] font-bold text-lg hover:bg-[#ff3366] hover:text-white transition-colors disabled:opacity-50"
+          className="w-full py-3 rounded-lg border border-[#FF1744]/40 text-[#FF1744] font-bold hover:bg-[#FF1744] hover:text-white transition-colors disabled:opacity-50"
         >
           {stopStatus === 'sending' ? 'Sending…'
-            : stopStatus === 'ok'    ? '✓ Stopped'
-            : stopStatus === 'error' ? '✗ Failed (check WiFi)'
-            : '⛔ EMERGENCY STOP'}
+            : stopStatus === 'ok'    ? '✓ Robot stopped'
+            : stopStatus === 'error' ? '✗ Failed — check WiFi'
+            : 'Emergency Stop'}
         </button>
       </div>
     </div>

@@ -13,7 +13,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { RootStackParamList } from '../types/navigation';
-import { BACKEND_BASE_URL, DEV_MODE, C } from '../constants';
+import { BACKEND_BASE_URL, C } from '../constants';
 
 type Nav   = NativeStackNavigationProp<RootStackParamList, 'Home'>;
 type Phase = 'form' | 'ready' | 'countdown';
@@ -26,14 +26,19 @@ export function HomeScreen() {
   const [phase,     setPhase]     = useState<Phase>('form');
   const [countdown, setCountdown] = useState(0);
 
-  const raceIdRef      = useRef(0);
-  const nameRef        = useRef('');
-  const wsRef          = useRef<WebSocket | null>(null);
-  const countdownTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const raceIdRef       = useRef(0);
+  const nameRef         = useRef('');
+  const wsRef           = useRef<WebSocket | null>(null);
+  const countdownTimer  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const reconnectTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [backendStatus, setBackendStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
 
   useEffect(() => {
+    connectBackendWs();
     return () => {
-      wsRef.current?.close();
+      reconnectTimer.current && clearTimeout(reconnectTimer.current);
+      if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); }
       countdownTimer.current && clearInterval(countdownTimer.current);
     };
   }, []);
@@ -42,13 +47,6 @@ export function HomeScreen() {
     const trimmed = name.trim();
     if (!trimmed) return;
 
-    if (DEV_MODE) {
-      raceIdRef.current = Date.now();
-      nameRef.current   = trimmed;
-      setPhase('ready');
-      return;
-    }
-
     setLoading(true);
     try {
       const res = await fetch(`${BACKEND_BASE_URL}/api/race/start`, {
@@ -56,12 +54,18 @@ export function HomeScreen() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: trimmed }),
       });
+      if (res.status === 409) {
+        const data = await res.json();
+        if (data.error === 'name_taken') {
+          Alert.alert('Name already taken', 'That name is already registered. Please choose a different name.');
+          return;
+        }
+      }
       if (!res.ok) throw new Error('server_error');
       const data = await res.json();
 
       raceIdRef.current = data.raceId;
       nameRef.current   = trimmed;
-      connectBackendWs();
       setPhase('ready');
     } catch (err) {
       console.warn('[HomeScreen] Backend unreachable:', err);
@@ -79,13 +83,16 @@ export function HomeScreen() {
       const wsUrl = BACKEND_BASE_URL.replace(/^http/, 'ws') + '/ws';
       const ws    = new WebSocket(wsUrl);
       wsRef.current = ws;
+      ws.onopen    = () => setBackendStatus('connected');
+      ws.onerror   = () => setBackendStatus('disconnected');
+      ws.onclose   = () => { setBackendStatus('disconnected'); reconnectTimer.current = setTimeout(connectBackendWs, 3000); };
       ws.onmessage = (e) => {
         try {
           const msg = JSON.parse(e.data as string);
           if (msg.type === 'countdown') startCountdown(msg.seconds ?? 3);
         } catch { /* ignore */ }
       };
-    } catch { /* optional */ }
+    } catch { setBackendStatus('disconnected'); }
   }
 
   function startCountdown(seconds: number) {
@@ -103,7 +110,8 @@ export function HomeScreen() {
   }
 
   function navigateToDrive() {
-    wsRef.current?.close();
+    reconnectTimer.current && clearTimeout(reconnectTimer.current);
+    if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); }
     navigation.replace('Drive', {
       name:   nameRef.current || name.trim(),
       raceId: raceIdRef.current,
@@ -131,15 +139,10 @@ export function HomeScreen() {
           </View>
           <Text style={styles.lockedLabel}>LOCKED IN</Text>
           <Text style={styles.readyName}>{nameRef.current}</Text>
-          {DEV_MODE && <Text style={styles.devBadge}>DEV MODE</Text>}
         </View>
         <View style={styles.rightPanel}>
           <Feather name="radio" size={22} color={C.primary} style={{ marginBottom: 4 }} />
           <Text style={styles.readyHint}>Awaiting race start{'\n'}from the admin...</Text>
-          <TouchableOpacity style={styles.btnPrimary} onPress={navigateToDrive}>
-            <Feather name="zap" size={16} color={C.bg} style={{ marginRight: 8 }} />
-            <Text style={styles.btnText}>Jump In Now</Text>
-          </TouchableOpacity>
         </View>
       </View>
     );
@@ -156,7 +159,6 @@ export function HomeScreen() {
         <Text style={styles.title}>ROBORACE</Text>
         <View style={styles.titleAccent} />
         <Text style={styles.subtitle}>Mobile Robot Racing</Text>
-        {DEV_MODE && <Text style={styles.devBadge}>DEV MODE</Text>}
       </View>
 
       {/* Right - form */}
@@ -186,6 +188,20 @@ export function HomeScreen() {
             <Text style={[styles.btnText, !name.trim() && styles.btnTextDisabled]}>Join the Race</Text>
           </TouchableOpacity>
         )}
+
+        <View style={styles.statusRow}>
+          <View style={[
+            styles.statusDot,
+            backendStatus === 'connected'    && styles.statusDotOn,
+            backendStatus === 'disconnected' && styles.statusDotOff,
+            backendStatus === 'connecting'   && styles.statusDotWait,
+          ]} />
+          <Text style={styles.statusText}>
+            {backendStatus === 'connected'    ? 'Backend connected'
+           : backendStatus === 'disconnected' ? 'Backend offline'
+           : 'Connecting to backend…'}
+          </Text>
+        </View>
       </View>
     </View>
   );
@@ -366,5 +382,25 @@ const styles = StyleSheet.create({
     color: C.mutedLight,
     letterSpacing: 6,
     marginTop: 8,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: C.muted,
+  },
+  statusDotOn:   { backgroundColor: '#00e676' },
+  statusDotOff:  { backgroundColor: '#ff5252' },
+  statusDotWait: { backgroundColor: C.amber },
+  statusText: {
+    fontSize: 11,
+    color: C.muted,
+    letterSpacing: 0.5,
   },
 });

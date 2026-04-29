@@ -11,7 +11,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { RootStackParamList } from '../types/navigation';
-import { BACKEND_BASE_URL, DEV_MODE, C } from '../constants';
+import { BACKEND_BASE_URL, C } from '../constants';
 
 type Nav   = NativeStackNavigationProp<RootStackParamList, 'Results'>;
 type Route = RouteProp<RootStackParamList, 'Results'>;
@@ -50,8 +50,8 @@ export function ResultsScreen() {
   const finalScore = eliminated ? 0 : score + time_bonus;
 
   useEffect(() => {
-    if (DEV_MODE || raceId === -1) {
-      setPosted(true); // skip backend in dev mode
+    if (raceId === -1) {
+      setPosted(true);
       return;
     }
     submitResult();
@@ -108,7 +108,6 @@ export function ResultsScreen() {
             <Text style={[styles.tagText, { color: C.amber }]}>Left the track for 5 s</Text>
           </View>
         )}
-        {DEV_MODE && <Text style={styles.devBadge}>DEV — not submitted</Text>}
       </View>
 
       {/* Right â€” stats + buttons */}
@@ -131,7 +130,7 @@ export function ResultsScreen() {
             <Text style={styles.statusText}>Saving to leaderboard…</Text>
           </View>
         )}
-        {posted && !error && !DEV_MODE && (
+        {posted && !error && (
           <View style={styles.statusRow}>
             <Feather name="check-circle" size={13} color={C.green} style={{ marginRight: 6 }} />
             <Text style={[styles.statusText, { color: C.green }]}>Saved to leaderboard</Text>

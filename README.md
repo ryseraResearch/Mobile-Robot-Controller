@@ -25,7 +25,7 @@ ESP32 AP  SSID: LineFollower  PASS: race1234  IP: 192.168.4.1
     └── PC        192.168.4.x   ← runs backend + admin dashboard
 ```
 
-> On race day, run `ipconfig` on the PC after connecting to `LineFollower` to find its `192.168.4.x` address and update the `.env.production` files.
+> The PC must have a **static IP** on the `LineFollower` network so the mobile app can always reach the backend at a known address. See [Admin PC static IP](#admin-pc-static-ip-required-on-race-day) below.
 
 ---
 
@@ -89,7 +89,25 @@ pio device monitor   # 115200 baud — confirm "AP ready" message
 
 Requires [PlatformIO](https://platformio.org/) (VS Code extension or CLI).
 
-### 2 — Start the backend (on the PC)
+### 2 — Set a static IP on the PC (race day only)
+
+The ESP32's DHCP server assigns a different IP to your PC each time you connect. A static IP prevents the mobile app's backend URL from becoming stale.
+
+**Set static IP** (PowerShell as Admin, run before or after connecting to `LineFollower`):
+
+```powershell
+netsh interface ip set address name="WiFi" static 192.168.4.100 255.255.255.0 192.168.4.1
+```
+
+**Restore DHCP** (run when leaving the event and switching back to normal WiFi):
+
+```powershell
+netsh interface ip set address name="WiFi" dhcp
+```
+
+`192.168.4.100` is already set in `mobile/.env.production` and `mobile/.env.development` — no manual IP hunting needed.
+
+### 3 — Start the backend (on the PC)
 
 ```bash
 cd backend
@@ -102,9 +120,9 @@ npm run dev
 npm run start
 ```
 
-The server starts on `http://0.0.0.0:3001`. Connect the PC to the `LineFollower` WiFi first, then note its `192.168.4.x` IP.
+The server starts on `http://0.0.0.0:3001`. Make sure the PC is connected to `LineFollower` WiFi and the static IP is set before players join.
 
-### 3 — Open the admin dashboard
+### 4 — Open the admin dashboard
 
 ```bash
 cd admin
@@ -121,26 +139,14 @@ npm run preview   # serves the production build locally
 
 Open `http://localhost:5173` (dev) or `http://localhost:4173` (preview).
 
-### 4 — Configure environment for race day
+### 5 — Configure environment for race day
 
-Update the PC's `192.168.4.x` IP in two files before building:
+If you set the static IP `192.168.4.100` as above, the `.env.production` files are already correct and need no changes. If you use a different address, update it in both files:
 
-**`admin/.env.production`**
-```
-VITE_BACKEND_BASE_URL=http://192.168.4.x:3001
-VITE_BACKEND_WS_URL=ws://192.168.4.x:3001/ws
-VITE_ESP32_WS_URL=ws://192.168.4.1/ws
-```
+- `admin/.env.production` → `VITE_BACKEND_BASE_URL` and `VITE_BACKEND_WS_URL`
+- `mobile/.env.production` → `EXPO_PUBLIC_BACKEND_BASE_URL`
 
-**`mobile/.env.production`**
-```
-EXPO_PUBLIC_BACKEND_BASE_URL=http://192.168.4.x:3001
-EXPO_PUBLIC_ESP32_WS_URL=ws://192.168.4.1/ws
-EXPO_PUBLIC_DRIVE_INTERVAL_MS=50
-EXPO_PUBLIC_DEV_MODE=false
-```
-
-### 5 — Build and install the mobile app
+### 6 — Build and install the mobile app
 
 Requires a physical Android device with USB debugging enabled.
 

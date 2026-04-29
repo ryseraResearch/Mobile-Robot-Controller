@@ -15,12 +15,12 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList }  from '../types/navigation';
 import { Joystick }            from '../components/Joystick';
 import { Feather } from '@expo/vector-icons';
-import { ESP32_WS_URL, DRIVE_INTERVAL_MS, DEV_MODE, C } from '../constants';
+import { ESP32_WS_URL, DRIVE_INTERVAL_MS, C } from '../constants';
 
 type Nav   = NativeStackNavigationProp<RootStackParamList, 'Drive'>;
 type Route = RouteProp<RootStackParamList, 'Drive'>;
 
-type WsStatus = 'connecting' | 'connected' | 'error' | 'dev';
+type WsStatus = 'connecting' | 'connected' | 'error';
 type Overlay  = null | 'eliminated' | 'finished';
 
 interface RaceResult {
@@ -50,7 +50,7 @@ export function DriveScreen() {
   const [score,    setScore]    = useState(1000);
   const [elapsed,  setElapsed]  = useState(0);
   const [sensors,  setSensors]  = useState([0, 0, 0, 0, 0]);
-  const [wsStatus, setWsStatus] = useState<WsStatus>(DEV_MODE ? 'dev' : 'connecting');
+  const [wsStatus, setWsStatus] = useState<WsStatus>('connecting');
   const [overlay,  setOverlay]  = useState<Overlay>(null);
   const [warning,  setWarning]  = useState('');
 
@@ -73,9 +73,9 @@ export function DriveScreen() {
   const leftPan  = useRef(new Animated.ValueXY()).current;
   const rightPan = useRef(new Animated.ValueXY()).current;
 
-  // Maps finger identifier â†’ which joystick it owns
+  // Maps finger identifier â†' which joystick it owns
   const touchSide   = useRef(new Map<string, 'left' | 'right'>());
-  // Maps finger identifier â†’ origin position when touch started
+  // Maps finger identifier â†' origin position when touch started
   const touchOrigin = useRef(new Map<string, { x: number; y: number }>());
 
   // Joystick physical constants (must match Joystick.tsx defaults)
@@ -91,11 +91,7 @@ export function DriveScreen() {
 
   // â”€â”€ Lifecycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
-    if (DEV_MODE) {
-      startDriveLoop(); // no WS in dev â€” still run loop so logs are visible
-    } else {
-      connectEsp32();
-    }
+    connectEsp32();
     return () => {
       driveIntervalRef.current && clearInterval(driveIntervalRef.current);
       wsRef.current?.close();
@@ -111,9 +107,10 @@ export function DriveScreen() {
     ws.onopen = () => {
       console.log('[DriveScreen] WS connected to ESP32');
       setWsStatus('connected');
-      const startCmd = JSON.stringify({ type: 'cmd', action: 'start' });
-      console.log('[DriveScreen] â†’ send:', startCmd);
-      ws.send(startCmd);
+      // reset first so the ESP32 state machine returns to WAITING regardless
+      // of what the previous race left it in, then start the new race
+      ws.send(JSON.stringify({ type: 'cmd', action: 'reset' }));
+      ws.send(JSON.stringify({ type: 'cmd', action: 'start' }));
       startDriveLoop();
     };
 
@@ -133,7 +130,7 @@ export function DriveScreen() {
   // â”€â”€ 50 ms drive loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function startDriveLoop() {
     driveIntervalRef.current = setInterval(() => {
-      if (!DEV_MODE && wsRef.current?.readyState !== WebSocket.OPEN) return;
+      if (wsRef.current?.readyState !== WebSocket.OPEN) return;
 
       // Left Y = proportional speed (-1 to +1). Right X = steer (-1 to +1).
       // Tank mixing: outer wheel holds speed, inner wheel scales down.
@@ -141,13 +138,13 @@ export function DriveScreen() {
       const velocity = leftYRef.current;           // proportional: push = faster
       const steer    = rightXRef.current;          // X-axis only
 
-      const left  = Math.max(-1, Math.min(1, velocity * (1 + steer)));
-      const right = Math.max(-1, Math.min(1, velocity * (1 - steer)));
+      const left  = Math.max(-1, Math.min(1, velocity * (1 - steer)));
+      const right = Math.max(-1, Math.min(1, velocity * (1 + steer)));
 
       const driveCmd = JSON.stringify({ type: 'drive', left, right });
       console.log(`[Joystick Input]  leftY=${velocity.toFixed(2)}  rightX=${steer.toFixed(2)}`);
-      console.log(`[ESP32 â†’] ${driveCmd}`);
-      if (!DEV_MODE && wsRef.current?.readyState === WebSocket.OPEN) {
+      console.log(`[ESP32 â†'] ${driveCmd}`);
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(driveCmd);
       }
     }, DRIVE_INTERVAL_MS);
@@ -322,9 +319,7 @@ export function DriveScreen() {
         <Text style={styles.nameText} numberOfLines={1}>{name}</Text>
 
         {/* WS / warning status */}
-        {wsStatus === 'dev' ? (
-          <Text style={[styles.statusPill, styles.pillDev]}>âš¡ DEV</Text>
-        ) : wsStatus !== 'connected' ? (
+        {wsStatus !== 'connected' ? (
           <Text style={[styles.statusPill, wsStatus === 'error' ? styles.pillError : styles.pillWarn]}>
             {wsStatus === 'connecting' ? 'Connectingâ€¦' : 'No connection'}
           </Text>
@@ -353,7 +348,7 @@ export function DriveScreen() {
         <View style={styles.stickPanel}>
           <Text style={styles.stickLabel}>SPEED</Text>
           <Joystick size={150} pan={leftPan} />
-          <Text style={styles.stickHint}>â†‘ forward</Text>
+          <Text style={styles.stickHint}>â†' forward</Text>
         </View>
 
         {/* Center â€” score + sensors */}
@@ -375,7 +370,7 @@ export function DriveScreen() {
         <View style={styles.stickPanel}>
           <Text style={styles.stickLabel}>STEER</Text>
           <Joystick size={150} pan={rightPan} />
-          <Text style={styles.stickHint}>â† steer â†’</Text>
+          <Text style={styles.stickHint}>â† steer â†'</Text>
         </View>
 
       </View>

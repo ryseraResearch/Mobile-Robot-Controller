@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import { ConfigTab }      from "./tabs/ConfigTab";
 import { LeaderboardTab } from "./tabs/LeaderboardTab";
 import { RaceControlTab } from "./tabs/RaceControlTab";
@@ -9,31 +9,35 @@ type Tab = "leaderboard" | "config" | "race";
 const TABS: { id: Tab; label: string }[] = [
   { id: "leaderboard", label: "Leaderboard" },
   { id: "config",      label: "Config"      },
-  { id: "race",        label: "Race Control" },
+  { id: "race",        label: "Race Start"  },
 ];
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<Tab>("leaderboard");
+  const [activeTab, setActiveTab]       = useState<Tab>("leaderboard");
+  const [pendingRacer, setPendingRacer] = useState<string | null>(null);
 
   return (
-    <div className="min-h-screen bg-[#07070f] text-[#eeeeff]">
-      <header className="border-b border-[#1e1e3c] bg-[#0e0e1e] sticky top-0 z-10">
+    <div className="min-h-screen bg-[#0A0808] text-[#F0ECEC]">
+      <header className="border-b border-[#2E1A1A] bg-[#120C0C] sticky top-0 z-10">
         <div className="max-w-5xl mx-auto flex items-center gap-0">
-          <span className="px-5 py-4 text-sm font-bold text-[#00c8ff] tracking-widest uppercase shrink-0">
-            Line Follower Admin
+          <span className="px-5 py-4 text-sm font-black text-[#FF1744] tracking-widest uppercase shrink-0">
+            ROBORACE
           </span>
           <nav className="flex">
             {TABS.map(t => (
               <button
                 key={t.id}
                 onClick={() => setActiveTab(t.id)}
-                className={"px-5 py-4 text-sm font-medium border-b-2 transition-colors " + (
+                className={"relative px-5 py-4 text-sm font-medium border-b-2 transition-colors " + (
                   activeTab === t.id
-                    ? "border-[#00c8ff] text-[#00c8ff]"
-                    : "border-transparent text-[#4a4a80] hover:text-[#8888bb]"
+                    ? "border-[#FF1744] text-[#FF1744]"
+                    : "border-transparent text-[#5A3A3A] hover:text-[#9A7070]"
                 )}
               >
                 {t.label}
+                {t.id === "race" && pendingRacer && (
+                  <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-[#FF9100] animate-pulse" />
+                )}
               </button>
             ))}
           </nav>
@@ -42,7 +46,12 @@ export default function App() {
       <main className="max-w-5xl mx-auto">
         {activeTab === "leaderboard" && <LeaderboardTab />}
         {activeTab === "config"      && <ConfigTab />}
-        {activeTab === "race"        && <RaceControlTab />}
+        {activeTab === "race"        && (
+          <RaceControlTab
+            pendingRacer={pendingRacer}
+            onRacerUpdate={setPendingRacer}
+          />
+        )}
       </main>
     </div>
   );

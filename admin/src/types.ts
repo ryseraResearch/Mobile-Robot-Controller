@@ -2,6 +2,7 @@ export interface ConfigMap {
   baseVelocity:     string;
   initialScore:     string;
   timeBonusEnabled: string;
+  penaltyRate:      string;
 }
 
 export interface Competitor {

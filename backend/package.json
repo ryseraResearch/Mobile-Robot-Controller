@@ -4,8 +4,7 @@
   "description": "REST API + WebSocket relay + SQLite leaderboard for the Line Follower Robot game",
   "main": "src/index.js",
   "scripts": {
-    "dev":   "node --env-file=.env.development src/index.js",
-    "start": "node --env-file=.env.production  src/index.js"
+    "start": "node --env-file=.env.production src/index.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

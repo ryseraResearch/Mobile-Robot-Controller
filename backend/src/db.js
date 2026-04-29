@@ -40,9 +40,10 @@ const upsertConfig = db.prepare(`
 `);
 
 const defaults = [
-  ['baseVelocity',    '180'],
+  ['baseVelocity',    '100'],
   ['initialScore',    '1000'],
   ['timeBonusEnabled','true'],
+  ['penaltyRate',     '1'],
 ];
 
 db.exec('BEGIN');

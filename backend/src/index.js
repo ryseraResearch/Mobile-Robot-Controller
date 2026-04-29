@@ -29,6 +29,20 @@ wss.on('connection', (ws) => {
   // Send current leaderboard + config to newly connected client
   ws.send(JSON.stringify({ type: 'leaderboard', data: getLeaderboard() }));
   ws.send(JSON.stringify({ type: 'config',      data: getAllConfig()   }));
+
+  // Relay any message a client sends to ALL other connected clients.
+  // Used so the admin dashboard can broadcast countdown/commands to the mobile app.
+  ws.on('message', (raw) => {
+    try {
+      const msg = JSON.parse(raw.toString());
+      const out = JSON.stringify(msg);
+      for (const client of wss.clients) {
+        if (client !== ws && client.readyState === client.OPEN) {
+          client.send(out);
+        }
+      }
+    } catch { /* ignore malformed */ }
+  });
 });
 
 // ─────────────────────── DB helpers ──────────────────────────────
@@ -74,13 +88,22 @@ app.post('/api/race/start', (req, res) => {
   if (!name || !String(name).trim()) {
     return res.status(400).json({ error: 'name is required' });
   }
-  // Insert a pending placeholder — final fields updated on finish
+  const trimmed = String(name).trim();
+
+  const existing = db.prepare(
+    'SELECT id FROM competitors WHERE name = ? COLLATE NOCASE LIMIT 1'
+  ).get(trimmed);
+  if (existing) {
+    return res.status(409).json({ error: 'name_taken' });
+  }
+
   const result = db.prepare(`
     INSERT INTO competitors (name, score, time_ms, time_bonus, final_score, eliminated)
     VALUES (?, 0, 0, 0, 0, 0)
-  `).run(String(name).trim());
+  `).run(trimmed);
 
   res.json({ raceId: result.lastInsertRowid });
+  broadcast({ type: 'race_start', name: trimmed });
 });
 
 // POST /api/race/:id/finish  body: { score, time_ms, time_bonus, eliminated }
