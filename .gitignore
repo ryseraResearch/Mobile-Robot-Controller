@@ -1,0 +1,27 @@
+# PlatformIO
+firmware/.pio/
+firmware/.pioenvs/
+firmware/.piolibdeps/
+
+# Node.js
+backend/node_modules/
+backend/.env
+
+# Expo / React Native
+mobile/node_modules/
+mobile/.expo/
+mobile/android/
+mobile/ios/
+mobile/.env
+
+# Admin dashboard
+admin/node_modules/
+admin/dist/
+admin/.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# VS Code
+.vscode/
