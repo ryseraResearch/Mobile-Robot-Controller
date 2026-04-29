@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,18 +9,18 @@ import {
   GestureResponderEvent,
   Dimensions,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { RootStackParamList }  from '../types/navigation';
 import { Joystick }            from '../components/Joystick';
-import { ESP32_WS_URL, DRIVE_INTERVAL_MS, STORAGE_RACE_RESULT, DEV_MODE, C } from '../constants';
+import { Feather } from '@expo/vector-icons';
+import { ESP32_WS_URL, DRIVE_INTERVAL_MS, C } from '../constants';
 
 type Nav   = NativeStackNavigationProp<RootStackParamList, 'Drive'>;
 type Route = RouteProp<RootStackParamList, 'Drive'>;
 
-type WsStatus = 'connecting' | 'connected' | 'error' | 'dev';
+type WsStatus = 'connecting' | 'connected' | 'error';
 type Overlay  = null | 'eliminated' | 'finished';
 
 interface RaceResult {
@@ -46,36 +46,36 @@ export function DriveScreen() {
   const route      = useRoute<Route>();
   const { name, raceId } = route.params;
 
-  // ── Display state ───────────────────────────────────────────────
+  // â”€â”€ Display state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [score,    setScore]    = useState(1000);
   const [elapsed,  setElapsed]  = useState(0);
   const [sensors,  setSensors]  = useState([0, 0, 0, 0, 0]);
-  const [wsStatus, setWsStatus] = useState<WsStatus>(DEV_MODE ? 'dev' : 'connecting');
+  const [wsStatus, setWsStatus] = useState<WsStatus>('connecting');
   const [overlay,  setOverlay]  = useState<Overlay>(null);
   const [warning,  setWarning]  = useState('');
 
-  // ── Finish data for overlay ─────────────────────────────────────
+  // â”€â”€ Finish data for overlay â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [finishScore,  setFinishScore]  = useState(0);
   const [finishBonus,  setFinishBonus]  = useState(0);
   const [finishTimeMs, setFinishTimeMs] = useState(0);
 
-  // ── Score flash animation (Phase 5) ────────────────────────────
+  // â”€â”€ Score flash animation (Phase 5) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const scoreFlash    = useRef(new Animated.Value(0)).current;
   const prevScoreRef  = useRef(1000);
 
-  // ── Drive values (refs — no re-render overhead) ─────────────────
+  // â”€â”€ Drive values (refs â€” no re-render overhead) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const leftYRef  = useRef(0);
   const rightXRef = useRef(0);
   const rightYRef = useRef(0);
 
-  // ── Multi-touch routing (single capture zone) ────────────────────
+  // â”€â”€ Multi-touch routing (single capture zone) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Each joystick has its own Animated pan for display
   const leftPan  = useRef(new Animated.ValueXY()).current;
   const rightPan = useRef(new Animated.ValueXY()).current;
 
-  // Maps finger identifier → which joystick it owns
+  // Maps finger identifier â†' which joystick it owns
   const touchSide   = useRef(new Map<string, 'left' | 'right'>());
-  // Maps finger identifier → origin position when touch started
+  // Maps finger identifier â†' origin position when touch started
   const touchOrigin = useRef(new Map<string, { x: number; y: number }>());
 
   // Joystick physical constants (must match Joystick.tsx defaults)
@@ -83,26 +83,22 @@ export function DriveScreen() {
   const JTHUMB = 52;
   const JMAX  = JSIZE / 2 - JTHUMB / 2; // max thumb offset in px
 
-  // ── Stable refs for closures ────────────────────────────────────
+  // â”€â”€ Stable refs for closures â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const wsRef            = useRef<WebSocket | null>(null);
   const driveIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const elapsedRef       = useRef(0);
   const raceResultRef    = useRef<RaceResult | null>(null);
 
-  // ── Lifecycle ───────────────────────────────────────────────────
+  // â”€â”€ Lifecycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
-    if (DEV_MODE) {
-      startDriveLoop(); // no WS in dev — still run loop so logs are visible
-    } else {
-      connectEsp32();
-    }
+    connectEsp32();
     return () => {
       driveIntervalRef.current && clearInterval(driveIntervalRef.current);
       wsRef.current?.close();
     };
   }, []);
 
-  // ── WebSocket connection ─────────────────────────────────────────
+  // â”€â”€ WebSocket connection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function connectEsp32() {
     setWsStatus('connecting');
     const ws = new WebSocket(ESP32_WS_URL);
@@ -111,9 +107,10 @@ export function DriveScreen() {
     ws.onopen = () => {
       console.log('[DriveScreen] WS connected to ESP32');
       setWsStatus('connected');
-      const startCmd = JSON.stringify({ type: 'cmd', action: 'start' });
-      console.log('[DriveScreen] → send:', startCmd);
-      ws.send(startCmd);
+      // reset first so the ESP32 state machine returns to WAITING regardless
+      // of what the previous race left it in, then start the new race
+      ws.send(JSON.stringify({ type: 'cmd', action: 'reset' }));
+      ws.send(JSON.stringify({ type: 'cmd', action: 'start' }));
       startDriveLoop();
     };
 
@@ -130,32 +127,32 @@ export function DriveScreen() {
     };
   }
 
-  // ── 50 ms drive loop ─────────────────────────────────────────────
+  // â”€â”€ 50 ms drive loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function startDriveLoop() {
     driveIntervalRef.current = setInterval(() => {
-      if (!DEV_MODE && wsRef.current?.readyState !== WebSocket.OPEN) return;
+      if (wsRef.current?.readyState !== WebSocket.OPEN) return;
 
       // Left Y = proportional speed (-1 to +1). Right X = steer (-1 to +1).
       // Tank mixing: outer wheel holds speed, inner wheel scales down.
-      // Steering is naturally gated — when velocity=0 both outputs are 0.
+      // Steering is naturally gated â€” when velocity=0 both outputs are 0.
       const velocity = leftYRef.current;           // proportional: push = faster
       const steer    = rightXRef.current;          // X-axis only
 
-      const left  = Math.max(-1, Math.min(1, velocity * (1 + steer)));
-      const right = Math.max(-1, Math.min(1, velocity * (1 - steer)));
+      const left  = Math.max(-1, Math.min(1, velocity * (1 - steer)));
+      const right = Math.max(-1, Math.min(1, velocity * (1 + steer)));
 
       const driveCmd = JSON.stringify({ type: 'drive', left, right });
       console.log(`[Joystick Input]  leftY=${velocity.toFixed(2)}  rightX=${steer.toFixed(2)}`);
-      console.log(`[ESP32 →] ${driveCmd}`);
-      if (!DEV_MODE && wsRef.current?.readyState === WebSocket.OPEN) {
+      console.log(`[ESP32 â†'] ${driveCmd}`);
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(driveCmd);
       }
     }, DRIVE_INTERVAL_MS);
   }
 
-  // ── Incoming message handler ─────────────────────────────────────
+  // â”€â”€ Incoming message handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function handleMessage(msg: Record<string, unknown>) {
-    console.log('[DriveScreen] ← recv:', msg.type, msg);
+    console.log('[DriveScreen] â† recv:', msg.type, msg);
     switch (msg.type) {
       case 'state': {
         const newScore = (msg.score as number) ?? 0;
@@ -190,7 +187,6 @@ export function DriveScreen() {
           posted:     false,
         };
         raceResultRef.current = result;
-        persistResult(result);
         setOverlay('eliminated');
         break;
       }
@@ -210,7 +206,6 @@ export function DriveScreen() {
           posted:     false,
         };
         raceResultRef.current = result;
-        persistResult(result);
         setFinishScore(s);
         setFinishBonus(bonus);
         setFinishTimeMs(t);
@@ -220,7 +215,7 @@ export function DriveScreen() {
 
       case 'warning': {
         if ((msg.reason as string) === 'no_signal') {
-          setWarning('Signal lost — motors stopped');
+          setWarning('Signal lost â€” motors stopped');
           setTimeout(() => setWarning(''), 3000);
         }
         break;
@@ -233,9 +228,6 @@ export function DriveScreen() {
     driveIntervalRef.current = null;
   }
 
-  async function persistResult(result: RaceResult) {
-    await AsyncStorage.setItem(STORAGE_RACE_RESULT, JSON.stringify(result));
-  }
 
   function goToResults() {
     console.log('[DriveScreen] Navigating to ResultsScreen', raceResultRef.current);
@@ -250,12 +242,12 @@ export function DriveScreen() {
     });
   }
 
-  // ── Multi-touch handlers (route by screen half) ──────────────────
+  // â”€â”€ Multi-touch handlers (route by screen half) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function onAreaTouchStart(e: GestureResponderEvent) {
     const sw = Dimensions.get('window').width;
     for (const t of e.nativeEvent.changedTouches) {
       const side: 'left' | 'right' = t.pageX < sw / 2 ? 'left' : 'right';
-      // One finger per side — ignore extras
+      // One finger per side â€” ignore extras
       const alreadyOwned = [...touchSide.current.values()].includes(side);
       if (alreadyOwned) continue;
       touchSide.current.set(t.identifier, side);
@@ -312,40 +304,38 @@ export function DriveScreen() {
     }
   }
 
-  // ── Score text colour animation ──────────────────────────────────
+  // â”€â”€ Score text colour animation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const scoreColor = scoreFlash.interpolate({
     inputRange:  [0, 1],
     outputRange: [C.white, C.red],
   });
 
-  // ── Render (landscape: L-joystick | center | R-joystick) ─────────
+  // â”€â”€ Render (landscape: L-joystick | center | R-joystick) â”€â”€â”€â”€â”€â”€â”€â”€â”€
   return (
     <View style={styles.container}>
 
-      {/* ── Top bar ─────────────────────────────────────────────── */}
+      {/* â”€â”€ Top bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <View style={styles.topBar}>
         <Text style={styles.nameText} numberOfLines={1}>{name}</Text>
 
         {/* WS / warning status */}
-        {wsStatus === 'dev' ? (
-          <Text style={[styles.statusPill, styles.pillDev]}>⚡ DEV</Text>
-        ) : wsStatus !== 'connected' ? (
+        {wsStatus !== 'connected' ? (
           <Text style={[styles.statusPill, wsStatus === 'error' ? styles.pillError : styles.pillWarn]}>
-            {wsStatus === 'connecting' ? 'Connecting…' : 'No connection'}
+            {wsStatus === 'connecting' ? 'Connectingâ€¦' : 'No connection'}
           </Text>
         ) : !!warning ? (
           <Text style={[styles.statusPill, styles.pillWarn]}>{warning}</Text>
         ) : (
-          <Text style={[styles.statusPill, styles.pillOk]}>● LIVE</Text>
+          <Text style={[styles.statusPill, styles.pillOk]}>â— LIVE</Text>
         )}
 
         <Text style={styles.elapsedText}>{formatTime(elapsed)}</Text>
         <TouchableOpacity style={styles.exitBtn} onPress={() => navigation.replace('Home' as any)}>
-          <Text style={styles.exitBtnText}>✕</Text>
+          <Text style={styles.exitBtnText}>âœ•</Text>
         </TouchableOpacity>
       </View>
 
-      {/* ── Main area: single touch capture zone ─────────────────── */}
+      {/* â”€â”€ Main area: single touch capture zone â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <View
         style={styles.mainArea}
         onTouchStart={onAreaTouchStart}
@@ -354,14 +344,14 @@ export function DriveScreen() {
         onTouchCancel={onAreaTouchEnd}
       >
 
-        {/* Left joystick — Speed (Y axis, display only) */}
+        {/* Left joystick â€” Speed (Y axis, display only) */}
         <View style={styles.stickPanel}>
           <Text style={styles.stickLabel}>SPEED</Text>
           <Joystick size={150} pan={leftPan} />
-          <Text style={styles.stickHint}>↑ forward</Text>
+          <Text style={styles.stickHint}>â†' forward</Text>
         </View>
 
-        {/* Center — score + sensors */}
+        {/* Center â€” score + sensors */}
         <View style={styles.centerPanel}>
           <Animated.Text style={[styles.scoreText, { color: scoreColor }]}>
             {score}
@@ -376,24 +366,31 @@ export function DriveScreen() {
           <Text style={styles.sensorLabel}>IR SENSORS</Text>
         </View>
 
-        {/* Right joystick — Steer (free 2-D, display only) */}
+        {/* Right joystick â€” Steer (free 2-D, display only) */}
         <View style={styles.stickPanel}>
           <Text style={styles.stickLabel}>STEER</Text>
           <Joystick size={150} pan={rightPan} />
-          <Text style={styles.stickHint}>← steer →</Text>
+          <Text style={styles.stickHint}>â† steer â†'</Text>
         </View>
 
       </View>
 
-      {/* ── Eliminated overlay ──────────────────────────────────── */}
+      {/* â”€â”€ Eliminated overlay â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <Modal visible={overlay === 'eliminated'} transparent animationType="fade">
         <View style={styles.overlayBg}>
           <View style={styles.overlayCard}>
-            <Text style={[styles.overlayTitle, { color: C.red }]}>Eliminated</Text>
-            <Text style={styles.overlayBody}>Robot was off-line for 5 seconds</Text>
+            <Feather name="x-circle" size={44} color={C.red} style={styles.overlayIcon} />
+            <Text style={[styles.overlayTitle, { color: C.red }]}>ELIMINATED</Text>
+            <Text style={styles.overlayBody}>Your robot left the track for 5 s</Text>
             <View style={styles.overlayStats}>
-              <Text style={styles.overlayStat}>Score: <Text style={styles.overlayVal}>{raceResultRef.current?.score ?? 0}</Text></Text>
-              <Text style={styles.overlayStat}>Time: <Text style={styles.overlayVal}>{formatTime(raceResultRef.current?.time_ms ?? 0)}</Text></Text>
+              <View style={styles.overlayStatRow}>
+                <Feather name="zap" size={13} color={C.muted} style={{ marginRight: 6 }} />
+                <Text style={styles.overlayStat}>Score  <Text style={styles.overlayVal}>{raceResultRef.current?.score ?? 0}</Text></Text>
+              </View>
+              <View style={styles.overlayStatRow}>
+                <Feather name="clock" size={13} color={C.muted} style={{ marginRight: 6 }} />
+                <Text style={styles.overlayStat}>Time  <Text style={styles.overlayVal}>{formatTime(raceResultRef.current?.time_ms ?? 0)}</Text></Text>
+              </View>
             </View>
             <TouchableOpacity style={styles.overlayBtn} onPress={goToResults}>
               <Text style={styles.overlayBtnText}>View Results</Text>
@@ -402,18 +399,30 @@ export function DriveScreen() {
         </View>
       </Modal>
 
-      {/* ── Finished overlay ────────────────────────────────────── */}
+      {/* â”€â”€ Finished overlay â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <Modal visible={overlay === 'finished'} transparent animationType="fade">
         <View style={styles.overlayBg}>
           <View style={styles.overlayCard}>
-            <Text style={[styles.overlayTitle, { color: C.green }]}>Finished!</Text>
+            <Feather name="award" size={44} color={C.primary} style={styles.overlayIcon} />
+            <Text style={[styles.overlayTitle, { color: C.white }]}>FINISH LINE!</Text>
             <View style={styles.overlayStats}>
-              <Text style={styles.overlayStat}>Score: <Text style={styles.overlayVal}>{finishScore}</Text></Text>
-              <Text style={styles.overlayStat}>Bonus: <Text style={styles.overlayVal}>+{finishBonus}</Text></Text>
-              <Text style={[styles.overlayStat, { color: C.primary, fontSize: 20 }]}>
-                Final: <Text style={{ fontWeight: 'bold' }}>{finishScore + finishBonus}</Text>
-              </Text>
-              <Text style={styles.overlayStat}>Time: <Text style={styles.overlayVal}>{formatTime(finishTimeMs)}</Text></Text>
+              <View style={styles.overlayStatRow}>
+                <Feather name="zap" size={13} color={C.muted} style={{ marginRight: 6 }} />
+                <Text style={styles.overlayStat}>Score  <Text style={styles.overlayVal}>{finishScore}</Text></Text>
+              </View>
+              <View style={styles.overlayStatRow}>
+                <Feather name="star" size={13} color={C.muted} style={{ marginRight: 6 }} />
+                <Text style={styles.overlayStat}>Bonus  <Text style={styles.overlayVal}>+{finishBonus}</Text></Text>
+              </View>
+              <View style={[styles.overlayStatRow, styles.overlayFinalRow]}>
+                <Text style={[styles.overlayStat, { color: C.primary, fontSize: 22 }]}>
+                  Final  <Text style={{ fontWeight: '900' }}>{finishScore + finishBonus}</Text>
+                </Text>
+              </View>
+              <View style={styles.overlayStatRow}>
+                <Feather name="clock" size={13} color={C.muted} style={{ marginRight: 6 }} />
+                <Text style={styles.overlayStat}>Time  <Text style={styles.overlayVal}>{formatTime(finishTimeMs)}</Text></Text>
+              </View>
             </View>
             <TouchableOpacity style={styles.overlayBtn} onPress={goToResults}>
               <Text style={styles.overlayBtnText}>View Results</Text>
@@ -433,7 +442,7 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
   },
 
-  // ── Top bar
+  // â”€â”€ Top bar
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -483,7 +492,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // ── Main area
+  // â”€â”€ Main area
   mainArea: {
     flex: 1,
     flexDirection: 'row',
@@ -493,7 +502,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
 
-  // ── Stick panels
+  // â”€â”€ Stick panels
   stickPanel: {
     alignItems: 'center',
     gap: 8,
@@ -510,7 +519,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
 
-  // ── Center panel
+  // â”€â”€ Center panel
   centerPanel: {
     flex: 1,
     alignItems: 'center',
@@ -551,55 +560,80 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 
-  // ── Overlays
+  // â”€â”€ Overlays
   overlayBg: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.85)',
+    backgroundColor: 'rgba(0,0,0,0.88)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   overlayCard: {
     backgroundColor: C.card,
     borderRadius: 20,
-    padding: 28,
+    paddingVertical: 24,
+    paddingHorizontal: 32,
     alignItems: 'center',
-    minWidth: 320,
+    minWidth: 300,
     borderWidth: 1,
     borderColor: C.border,
+    shadowColor: C.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  overlayIcon: {
+    marginBottom: 10,
   },
   overlayTitle: {
-    fontSize: 30,
-    fontWeight: 'bold',
-    marginBottom: 10,
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: 2,
+    marginBottom: 6,
   },
   overlayBody: {
     color: C.muted,
-    fontSize: 14,
+    fontSize: 13,
     marginBottom: 12,
     textAlign: 'center',
   },
   overlayStats: {
-    gap: 4,
+    gap: 6,
+    alignItems: 'flex-start',
+    marginBottom: 18,
+    width: '100%',
+  },
+  overlayStatRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+  },
+  overlayFinalRow: {
+    marginTop: 4,
+    marginBottom: 2,
   },
   overlayStat: {
     color: C.mutedLight,
-    fontSize: 16,
+    fontSize: 15,
   },
   overlayVal: {
     color: C.white,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   overlayBtn: {
     backgroundColor: C.primary,
     borderRadius: 10,
     paddingVertical: 11,
     paddingHorizontal: 28,
+    shadowColor: C.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 6,
   },
   overlayBtnText: {
     color: C.bg,
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '800',
   },
 });
+

@@ -9,7 +9,8 @@
  *   Left  — IN1=26, IN2=27, ENA(PWM)=18
  *   Right — IN3=19, IN4=21, ENB(PWM)=22
  *
- * IR sensors (ADC1, active-high on white line): GPIO 32–36, threshold 2048
+ * IR sensors (DO digital comparator output, active-HIGH on white line):
+ *   GPIO 32, 33, 34, 35, 4 — connect DO pin of each module, tune pot per module
  * Finish wall: HC-SR04 ultrasonic — TRIG=23, ECHO=25
  *   Triggers finish when wall is within FINISH_DISTANCE_CM (default 20 cm)
  */
@@ -26,11 +27,11 @@
 
 // ─────────────────────── Motor pins (L298N) ──────────────────────
 // NOTE: GPIO 16 & 17 are reserved for PSRAM on ESP32-WROOM modules.
-#define LEFT_IN1      26
-#define LEFT_IN2      27
+#define LEFT_IN1      27
+#define LEFT_IN2      26
 #define LEFT_PWM_PIN  18
-#define RIGHT_IN1     19
-#define RIGHT_IN2     21
+#define RIGHT_IN1     21
+#define RIGHT_IN2     19
 #define RIGHT_PWM_PIN 22
 
 #define LEFT_PWM_CH   0
@@ -39,15 +40,20 @@
 #define PWM_RES_BITS  8   // 0–255
 
 // ─────────────────────── IR sensors ─────────────────────────────
+// All 5 sensors use DO (digital comparator) output — no ADC needed.
+// Active-HIGH: DO = 1 when sensor is over white line.
+// Adjust each module's trimmer pot so LED lights on white, off on black.
 #define SENSOR_COUNT 5
-const uint8_t SENSOR_PINS[SENSOR_COUNT] = {32, 33, 34, 35, 36};
-#define IR_THRESHOLD 2048
+const uint8_t SENSOR_PINS[SENSOR_COUNT] = {32, 33, 34, 35, 4};
 
 // ─────────────────────── Finish wall (HC-SR04 ultrasonic) ───────
 #define ULTRASONIC_TRIG_PIN   23
 #define ULTRASONIC_ECHO_PIN   25
-#define FINISH_DISTANCE_CM    10    // trigger finish when wall ≤ this distance
+#define FINISH_DISTANCE_CM    20   // trigger finish when wall ≤ this distance
 #define ULTRASONIC_TIMEOUT_US 30000UL  // ~5 m max range; avoids blocking too long
+#define ULTRASONIC_SAMPLE_MS  200UL   // only ping every 200 ms (reduces blocking)
+#define FINISH_DEBOUNCE_COUNT 3       // require N consecutive readings before triggering
+#define FINISH_MIN_ELAPSED_MS 3000UL  // ignore finish wall for first 3 s of race
 
 // ─────────────────────── Timing constants ────────────────────────
 #define STATE_BROADCAST_MS   100UL  // send state every 100 ms
@@ -57,7 +63,7 @@ const uint8_t SENSOR_PINS[SENSOR_COUNT] = {32, 33, 34, 35, 36};
 
 // ─────────────────────── Game defaults ───────────────────────────
 #define DEFAULT_INITIAL_SCORE  1000
-#define DEFAULT_BASE_VELOCITY  180
+#define DEFAULT_BASE_VELOCITY  100
 
 // ─────────────────────── Calibration ────────────────────────────
 #define CALIBRATE_INTERVAL_MS  200UL
@@ -74,6 +80,7 @@ GameState gameState = WAITING;
 int initialScore = DEFAULT_INITIAL_SCORE;
 int currentScore = DEFAULT_INITIAL_SCORE;
 int baseVelocity = DEFAULT_BASE_VELOCITY;
+int penaltyRate  = 1;   // points deducted per 100 ms off-line
 
 unsigned long raceStartMs            = 0;
 unsigned long offlineAccumMs         = 0;   // cumulative ms spent off-line
@@ -86,6 +93,8 @@ unsigned long lastDriveCmdMs        = 0;
 bool driveEverReceived   = false;  // first drive cmd received this race
 bool motorsKilledNoSig   = false;  // safety-kill already fired this race
 bool finishTriggered     = false;  // finish-wall already processed
+int  finishDebounce      = 0;      // consecutive close-range readings
+unsigned long lastUltrasonicMs = 0;// last time ultrasonic was sampled
 
 // Calibration
 bool          calibrating      = false;
@@ -119,7 +128,7 @@ void stopMotors() {
 bool readSensors(int out[SENSOR_COUNT]) {
     bool anyOn = false;
     for (int i = 0; i < SENSOR_COUNT; i++) {
-        out[i] = (analogRead(SENSOR_PINS[i]) >= IR_THRESHOLD) ? 1 : 0;
+        out[i] = digitalRead(SENSOR_PINS[i]);
         if (out[i]) anyOn = true;
     }
     return anyOn;
@@ -157,6 +166,8 @@ void resetRace() {
     driveEverReceived     = false;
     motorsKilledNoSig     = false;
     finishTriggered       = false;
+    finishDebounce        = 0;
+    lastUltrasonicMs      = 0;
     stopMotors();
 }
 
@@ -177,8 +188,9 @@ void onWsEvent(AsyncWebSocket *srv, AsyncWebSocketClient *client,
 
     if (strcmp(t, "drive") == 0) {
         if (gameState == RACING) {
-            float l = constrain((float)(doc["left"]  | 0.0), -1.0f, 1.0f);
-            float r = constrain((float)(doc["right"] | 0.0), -1.0f, 1.0f);
+            float scale = baseVelocity / 255.0f;
+            float l = constrain((float)(doc["left"]  | 0.0), -1.0f, 1.0f) * scale;
+            float r = constrain((float)(doc["right"] | 0.0), -1.0f, 1.0f) * scale;
             driveMotor(LEFT_IN1,  LEFT_IN2,  LEFT_PWM_CH,  l);
             driveMotor(RIGHT_IN1, RIGHT_IN2, RIGHT_PWM_CH, r);
             lastDriveCmdMs    = millis();
@@ -198,6 +210,8 @@ void onWsEvent(AsyncWebSocket *srv, AsyncWebSocketClient *client,
             driveEverReceived     = false;
             motorsKilledNoSig     = false;
             finishTriggered       = false;
+            finishDebounce        = 0;
+            lastUltrasonicMs      = millis();
             lastDriveCmdMs        = millis();  // grace period before kill
         } else if (strcmp(action, "stop") == 0) {
             gameState = FINISHED;
@@ -215,6 +229,10 @@ void onWsEvent(AsyncWebSocket *srv, AsyncWebSocketClient *client,
             initialScore = (int)doc["initialScore"];
             prefs.putInt("initialScore", initialScore);
         }
+        if (doc.containsKey("penaltyRate")) {
+            penaltyRate = max(0, (int)doc["penaltyRate"]);
+            prefs.putInt("penaltyRate", penaltyRate);
+        }
     }
 }
 
@@ -226,6 +244,7 @@ void setup() {
     prefs.begin("robot", false);
     baseVelocity = prefs.getInt("baseVelocity", DEFAULT_BASE_VELOCITY);
     initialScore = prefs.getInt("initialScore", DEFAULT_INITIAL_SCORE);
+    penaltyRate  = prefs.getInt("penaltyRate",  1);
     currentScore = initialScore;
 
     // Motor output pins
@@ -238,6 +257,9 @@ void setup() {
     ledcAttachPin(LEFT_PWM_PIN,  LEFT_PWM_CH);
     ledcAttachPin(RIGHT_PWM_PIN, RIGHT_PWM_CH);
     stopMotors();
+
+    // IR sensor DO pins
+    for (int i = 0; i < SENSOR_COUNT; i++) pinMode(SENSOR_PINS[i], INPUT);
 
     // Finish wall — HC-SR04 ultrasonic
     pinMode(ULTRASONIC_TRIG_PIN, OUTPUT);
@@ -296,7 +318,7 @@ void loop() {
             lastCalibrateMs = now;
             Serial.print("[CAL] ");
             for (int i = 0; i < SENSOR_COUNT; i++) {
-                Serial.printf("GPIO%d=%4d  ", SENSOR_PINS[i], analogRead(SENSOR_PINS[i]));
+                Serial.printf("GPIO%d=%d  ", SENSOR_PINS[i], digitalRead(SENSOR_PINS[i]));
             }
             Serial.println();
         }
@@ -321,10 +343,10 @@ void loop() {
     if (!onLine) {
         offlineAccumMs += delta;
 
-        // Deduct 1 point per OFFLINE_DEDUCT_MS of cumulative offline time
+        // Deduct penaltyRate points per OFFLINE_DEDUCT_MS of cumulative offline time
         unsigned long intervals = offlineAccumMs / OFFLINE_DEDUCT_MS;
         if (intervals > offlineDeductIntervals) {
-            int toDeduct          = (int)(intervals - offlineDeductIntervals);
+            int toDeduct          = (int)(intervals - offlineDeductIntervals) * penaltyRate;
             currentScore          = max(0, currentScore - toDeduct);
             offlineDeductIntervals = intervals;
         }
@@ -341,28 +363,44 @@ void loop() {
     }
 
     // ── Finish wall trigger (HC-SR04) ────────────────────────────
-    // Fire a 10 µs trigger pulse
-    digitalWrite(ULTRASONIC_TRIG_PIN, LOW);
-    delayMicroseconds(2);
-    digitalWrite(ULTRASONIC_TRIG_PIN, HIGH);
-    delayMicroseconds(10);
-    digitalWrite(ULTRASONIC_TRIG_PIN, LOW);
-    // Measure echo pulse width; convert to cm (speed of sound: 29.1 µs/cm one-way)
-    unsigned long echoUs = pulseIn(ULTRASONIC_ECHO_PIN, HIGH, ULTRASONIC_TIMEOUT_US);
-    float distanceCm = (echoUs == 0) ? 999.0f : (echoUs / 2.0f / 29.1f);
+    // Throttle: only sample every ULTRASONIC_SAMPLE_MS to avoid blocking loop.
+    // Guard: ignore for the first FINISH_MIN_ELAPSED_MS of the race.
+    // Debounce: require FINISH_DEBOUNCE_COUNT consecutive close readings.
+    if (!finishTriggered
+        && elapsed >= FINISH_MIN_ELAPSED_MS
+        && (now - lastUltrasonicMs) >= ULTRASONIC_SAMPLE_MS)
+    {
+        lastUltrasonicMs = now;
 
-    if (!finishTriggered && distanceCm > 0 && distanceCm <= FINISH_DISTANCE_CM) {
-        finishTriggered = true;
-        stopMotors();
-        gameState      = FINISHED;
-        int bonus      = calcTimeBonus(elapsed);
-        StaticJsonDocument<256> doc;
-        doc["type"]      = "finished";
-        doc["score"]     = currentScore;
-        doc["elapsed"]   = elapsed;
-        doc["timeBonus"] = bonus;
-        broadcastDoc(doc);
-        return;
+        // Fire a 10 µs trigger pulse
+        digitalWrite(ULTRASONIC_TRIG_PIN, LOW);
+        delayMicroseconds(2);
+        digitalWrite(ULTRASONIC_TRIG_PIN, HIGH);
+        delayMicroseconds(10);
+        digitalWrite(ULTRASONIC_TRIG_PIN, LOW);
+        // Measure echo pulse width; convert to cm (speed of sound: 29.1 µs/cm one-way)
+        unsigned long echoUs = pulseIn(ULTRASONIC_ECHO_PIN, HIGH, ULTRASONIC_TIMEOUT_US);
+        float distanceCm = (echoUs == 0) ? 999.0f : (echoUs / 2.0f / 29.1f);
+
+        if (distanceCm > 0.0f && distanceCm <= FINISH_DISTANCE_CM) {
+            finishDebounce++;
+        } else {
+            finishDebounce = 0;  // not close — reset streak
+        }
+
+        if (finishDebounce >= FINISH_DEBOUNCE_COUNT) {
+            finishTriggered = true;
+            stopMotors();
+            gameState      = FINISHED;
+            int bonus      = calcTimeBonus(elapsed);
+            StaticJsonDocument<256> doc;
+            doc["type"]      = "finished";
+            doc["score"]     = currentScore;
+            doc["elapsed"]   = elapsed;
+            doc["timeBonus"] = bonus;
+            broadcastDoc(doc);
+            return;
+        }
     }
 
     // ── Periodic state broadcast ──────────────────────────────────

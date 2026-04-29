@@ -1,37 +1,32 @@
-// ── Backend (home WiFi) ───────────────────────────────────────────
-// Update this to the IP of the PC running `node src/index.js`.
-export const BACKEND_BASE_URL = 'http://192.168.1.100:3001';
+// ── Backend (PC on ESP32 AP network) ─────────────────────────────
+// Set in .env.development / .env.production via EXPO_PUBLIC_BACKEND_BASE_URL.
+// Update the production value to the PC's 192.168.4.x IP (run ipconfig after
+// connecting to the 'LineFollower' AP).
+export const BACKEND_BASE_URL  = process.env.EXPO_PUBLIC_BACKEND_BASE_URL  ?? 'http://192.168.4.4:3001';
 
 // ── ESP32 Access Point ────────────────────────────────────────────
-export const ESP32_WS_URL = 'ws://192.168.4.1/ws';
+export const ESP32_WS_URL      = process.env.EXPO_PUBLIC_ESP32_WS_URL      ?? 'ws://192.168.4.1/ws';
 
 // ── Drive loop ────────────────────────────────────────────────────
-export const DRIVE_INTERVAL_MS = 50;
+export const DRIVE_INTERVAL_MS = Number(process.env.EXPO_PUBLIC_DRIVE_INTERVAL_MS ?? 50);
 
 // ── AsyncStorage keys ────────────────────────────────────────────
-export const STORAGE_RACE_RESULT = 'pendingRaceResult';
-export const STORAGE_RACE_ID     = 'currentRaceId';
-export const STORAGE_NAME        = 'competitorName';
-
-// ── Dev mode ─────────────────────────────────────────────────────
-// Set to true to bypass backend registration and skip WiFi instruction.
-// Flip to false before a real race event.
-export const DEV_MODE = true;
+export const STORAGE_NAME = 'competitorName'; // reserved for future use
 
 // ── Color theme ──────────────────────────────────────────────────
 export const C = {
-  bg:          '#07070f',
-  surface:     '#0e0e1e',
-  card:        '#13132a',
-  border:      '#1e1e3c',
-  primary:     '#00c8ff',
-  primaryDim:  '#003d55',
-  green:       '#00e676',
+  bg:          '#0A0808',
+  surface:     '#120C0C',
+  card:        '#1A1010',
+  border:      '#2E1A1A',
+  primary:     '#FF1744',
+  primaryDim:  '#3D0014',
+  green:       '#00E676',
   greenDim:    '#003322',
-  red:         '#ff3366',
-  redDim:      '#3a0018',
-  amber:       '#ffaa00',
-  white:       '#eeeeff',
-  muted:       '#4a4a80',
-  mutedLight:  '#8888bb',
+  red:         '#FF1744',
+  redDim:      '#3D0014',
+  amber:       '#FF9100',
+  white:       '#F0ECEC',
+  muted:       '#5A3A3A',
+  mutedLight:  '#9A7070',
 } as const;
