@@ -201,6 +201,22 @@ Then open the Expo Dev Client app on the phone and connect.
 
 ---
 
+## Mobile app screenshots
+
+<p align="center">
+  <img src="docs/images/photo_1_2026-04-30_05-20-09.jpg" alt="Home Screen" width="200"/>
+  <img src="docs/images/photo_2_2026-04-30_05-20-09.jpg" alt="Drive Screen" width="200"/>
+  <img src="docs/images/photo_3_2026-04-30_05-20-09.jpg" alt="Sensor Display" width="200"/>
+  <img src="docs/images/photo_4_2026-04-30_05-20-09.jpg" alt="Race Progress" width="200"/>
+  <img src="docs/images/photo_5_2026-04-30_05-20-09.jpg" alt="Results Screen" width="200"/>
+</p>
+
+**Home Screen** — Player enters name and connects to race  
+**Drive Screen** — Dual joystick control with live score  
+**Results Screen** — Final score with time bonus breakdown
+
+---
+
 ## Admin dashboard
 
 | Tab | Purpose |
