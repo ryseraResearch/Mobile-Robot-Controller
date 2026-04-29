@@ -1,0 +1,14 @@
+{
+  "name": "line-follower-backend",
+  "version": "1.0.0",
+  "description": "REST API + WebSocket relay + SQLite leaderboard for the Line Follower Robot game",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.3",
+    "ws": "^8.16.0"
+  }
+}

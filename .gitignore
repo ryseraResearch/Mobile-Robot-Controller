@@ -7,6 +7,9 @@ firmware/.piolibdeps/
 backend/node_modules/
 backend/.env
 
+# SQLite database files
+backend/data/
+
 # Expo / React Native
 mobile/node_modules/
 mobile/.expo/
